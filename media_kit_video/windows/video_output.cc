@@ -31,17 +31,21 @@ VideoOutput::VideoOutput(int64_t handle,
   auto future = thread_pool_ref_->Post([&]() {
     mpv_set_option_string(handle_, "video-sync", "audio");
     mpv_set_option_string(handle_, "video-timing-offset", "0");
-    
+
     // Initialize video playback with hardware acceleration using native D3D11.
     auto is_hardware_acceleration_enabled = false;
-    
+
     if (configuration.enable_hardware_acceleration) {
       try {
-        // Create D3D11 renderer with swap chain.
+        IDXGIAdapter* flutter_adapter = nullptr;
+        if (auto* view = registrar_->GetView()) {
+          flutter_adapter = view->GetGraphicsAdapter();
+        }
         d3d11_renderer_ = std::make_unique<D3D11Renderer>(
             static_cast<int32_t>(width_.value_or(1)),
-            static_cast<int32_t>(height_.value_or(1)));
-        
+            static_cast<int32_t>(height_.value_or(1)),
+            flutter_adapter);
+
         // Initialize mpv with the D3D11 device and swap chain
         mpv_dxgi_init_params init_params = {
             d3d11_renderer_->device(),
@@ -49,13 +53,13 @@ VideoOutput::VideoOutput(int64_t handle,
             // Otherwise, you will get freeze.
             d3d11_renderer_->swap_chain()
         };
-        
+
         mpv_render_param params[] = {
             {MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_DXGI},
             {MPV_RENDER_PARAM_DXGI_INIT_PARAMS, &init_params},
             {MPV_RENDER_PARAM_INVALID, nullptr},
         };
-        
+
         // Create render context.
         if (mpv_render_context_create(&render_context_, handle_, params) == 0) {
           mpv_render_context_set_update_callback(
@@ -65,10 +69,10 @@ VideoOutput::VideoOutput(int64_t handle,
                 that->NotifyRender();
               },
               reinterpret_cast<void*>(this));
-          
+
           // Now create the Flutter texture after successful render context creation
           Resize(width_.value_or(1), height_.value_or(1));
-          
+
           // Set flag to true, indicating that H/W rendering is supported.
           is_hardware_acceleration_enabled = true;
           std::cout << "media_kit: VideoOutput: Using native D3D11 H/W rendering."
@@ -80,7 +84,7 @@ VideoOutput::VideoOutput(int64_t handle,
         }
       } catch (const std::exception& e) {
         // Fallback to software rendering.
-        std::cout << "media_kit: VideoOutput: Failed to initialize D3D11: " 
+        std::cout << "media_kit: VideoOutput: Failed to initialize D3D11: "
                   << e.what() << ", falling back to S/W."
                   << std::endl;
         d3d11_renderer_.reset(nullptr);
@@ -91,7 +95,7 @@ VideoOutput::VideoOutput(int64_t handle,
         d3d11_renderer_.reset(nullptr);
       }
     }
-    
+
     if (!is_hardware_acceleration_enabled) {
       std::cout << "media_kit: VideoOutput: Using S/W rendering." << std::endl;
       // Allocate a "large enough" buffer ahead of time.
@@ -162,7 +166,9 @@ void VideoOutput::Render() {
     if (d3d11_renderer_ != nullptr) {
       mpv_render_context_render(render_context_, nullptr);
       mpv_render_context_report_swap(render_context_);
-      d3d11_renderer_->CopyTexture();
+      // Atomically publish the rendered slot to the mailbox so that Flutter's
+      // GpuSurfaceTexture callback can import it without a copy.
+      d3d11_renderer_->ProducerCommit();
     }
     // S/W
     if (pixel_buffer_ != nullptr) {
@@ -290,26 +296,32 @@ void VideoOutput::Resize(int64_t required_width, int64_t required_height) {
     // Resize the D3D11 texture.
     d3d11_renderer_->SetSize(static_cast<int32_t>(required_width),
                             static_cast<int32_t>(required_height));
-    
+
     auto texture = std::make_unique<FlutterDesktopGpuSurfaceDescriptor>();
     texture->struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
-    texture->handle = d3d11_renderer_->handle();
+    // Seed with the current read-slot handle so Flutter has a valid surface
+    // even before the first mpv frame is committed.
+    texture->handle = d3d11_renderer_->ReadHandleSnapshot();
     texture->width = texture->visible_width = d3d11_renderer_->width();
     texture->height = texture->visible_height = d3d11_renderer_->height();
     texture->release_context = nullptr;
     texture->release_callback = [](void*) {};
     texture->format = kFlutterDesktopPixelFormatBGRA8888;
-    
+
     auto texture_variant =
         std::make_unique<flutter::TextureVariant>(flutter::GpuSurfaceTexture(
             kFlutterDesktopGpuSurfaceTypeDxgiSharedHandle, [&](auto, auto) {
               std::lock_guard<std::mutex> lock(textures_mutex_);
               if (texture_id_) {
-                d3d11_renderer_->CopyTexture();
-                return textures_.at(texture_id_).get();
-              } else {
-                return (FlutterDesktopGpuSurfaceDescriptor*)nullptr;
+                auto* desc = textures_.at(texture_id_).get();
+                // ConsumerAcquire() is lock-free.  texture_id_ != 0 implies
+                // d3d11_renderer_ is valid: UnregisterTexture guarantees that
+                // Flutter stops invoking this callback before the destructor
+                // resets d3d11_renderer_.
+                desc->handle = d3d11_renderer_->ConsumerAcquire();
+                return desc;
               }
+              return (FlutterDesktopGpuSurfaceDescriptor*)nullptr;
             }));
     // Register new texture.
     texture_id_ =
