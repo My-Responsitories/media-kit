@@ -120,9 +120,8 @@ abstract class InitializerNativeEventLoop {
         final event = Pointer<mpv_event>.fromAddress(message[1]);
         // Notify public event handler.
         await _callbacks[handle]?.call(event);
-      } catch (exception, stacktrace) {
-        print(exception);
-        print(stacktrace);
+      } catch (error, stackTrace) {
+        Zone.current.handleUncaughtError(error, stackTrace);
       }
       // Notify native event loop that event has been handled & it is safe to move onto next `mpv_wait_event`.
       _notify(message[0]);

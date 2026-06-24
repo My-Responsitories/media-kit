@@ -86,7 +86,15 @@ class NativePlayer extends PlatformPlayer {
 
     Initializer.dispose(ctx);
 
-    Timer(const Duration(seconds: 5), () => mpv.mpv_terminate_destroy(ctx));
+    Timer(const Duration(seconds: 5), () {
+      mpv.mpv_terminate_destroy(ctx);
+      for (var i in _requests.values) {
+        if (!i.isCompleted) {
+          i.completeError(AssertionError('[Player] has been disposed'));
+        }
+      }
+      _requests.clear();
+    });
   }
 
   /// Opens a [Media] or [Playlist] into the [Player].
@@ -170,6 +178,26 @@ class NativePlayer extends PlatformPlayer {
 
       // Jump to the specified [index] (in both cases either [play] is `true` or `false`).
       await _setPropertyInt64('playlist-pos', index);
+    }
+
+    if (synchronized) {
+      return lock.synchronized(function);
+    } else {
+      return function();
+    }
+  }
+
+  Future<void> replaceSingle(Media media, {bool synchronized = true}) {
+    Future<void> function() async {
+      throwIfDisposed();
+      assert(current.length == 1);
+
+      current.add(media);
+      await _add(media);
+
+      await _setPropertyInt64('playlist-pos', 1);
+      await command(const ['playlist-remove', '0']);
+      current.removeAt(0);
     }
 
     if (synchronized) {
@@ -374,17 +402,19 @@ class NativePlayer extends PlatformPlayer {
   }
 
   Future<void> _add(Media media) {
-    if (media.extras case final extras?) {
-      return command([
-        'loadfile',
-        media.uri,
-        'append',
-        if (apiVersion >= 0x20003) '-1',
-        extras.entries.map((e) => '${e.key}=${e.value}').join(','),
-      ]);
-    } else {
-      return command(['loadfile', media.uri, 'append']);
-    }
+    return command([
+      'loadfile',
+      media.uri,
+      'append',
+      if (apiVersion >= 0x20003) '-1',
+      [
+        if (media.start != null)
+          'start=${(media.start!.inMilliseconds / 1000).toStringAsFixed(3)}',
+        if (media.end != null)
+          'end=${(media.end!.inMilliseconds / 1000).toStringAsFixed(3)}',
+        ...?media.extras?.entries.map((e) => '${e.key}=${e.value}'),
+      ].join(','),
+    ]);
   }
 
   /// Appends a [Media] to the [Player]'s playlist.
@@ -1497,9 +1527,8 @@ class NativePlayer extends PlatformPlayer {
             for (final hook in onLoadHooks) {
               try {
                 await hook();
-              } catch (exception, stacktrace) {
-                print(exception);
-                print(stacktrace);
+              } catch (error, stackTrace) {
+                Zone.current.handleUncaughtError(error, stackTrace);
               }
             }
             // --------------------------------------------------
@@ -1519,61 +1548,6 @@ class NativePlayer extends PlatformPlayer {
             //   print(stacktrace);
             // }
             // Handle start & end position specified in the [Media].
-            try {
-              final name = 'playlist-pos'.toNativeUtf8();
-              final value = calloc<Int64>();
-              value.value = -1;
-
-              mpv.mpv_get_property(
-                ctx,
-                name,
-                generated.mpv_format.MPV_FORMAT_INT64,
-                value.cast(),
-              );
-
-              final index = value.value;
-
-              calloc.free(name);
-              calloc.free(value);
-
-              if (index >= 0) {
-                final start = current[index].start;
-                final end = current[index].end;
-
-                if (start != null) {
-                  try {
-                    final property = 'start'.toNativeUtf8();
-                    final value = (start.inMilliseconds / 1000)
-                        .toStringAsFixed(3)
-                        .toNativeUtf8();
-                    mpv.mpv_set_property_string(ctx, property, value);
-                    calloc.free(property);
-                    calloc.free(value);
-                  } catch (exception, stacktrace) {
-                    print(exception);
-                    print(stacktrace);
-                  }
-                }
-
-                if (end != null) {
-                  try {
-                    final property = 'end'.toNativeUtf8();
-                    final value = (end.inMilliseconds / 1000)
-                        .toStringAsFixed(3)
-                        .toNativeUtf8();
-                    mpv.mpv_set_property_string(ctx, property, value);
-                    calloc.free(property);
-                    calloc.free(value);
-                  } catch (exception, stacktrace) {
-                    print(exception);
-                    print(stacktrace);
-                  }
-                }
-              }
-            } catch (exception, stacktrace) {
-              print(exception);
-              print(stacktrace);
-            }
             // --------------------------------------------------
             mpv.mpv_hook_continue(ctx, prop.ref.id);
 
@@ -1582,9 +1556,8 @@ class NativePlayer extends PlatformPlayer {
             for (final hook in onUnloadHooks) {
               try {
                 await hook();
-              } catch (exception, stacktrace) {
-                print(exception);
-                print(stacktrace);
+              } catch (error, stackTrace) {
+                Zone.current.handleUncaughtError(error, stackTrace);
               }
             }
             // --------------------------------------------------
@@ -1606,26 +1579,6 @@ class NativePlayer extends PlatformPlayer {
             //   print(stacktrace);
             // }
             // Set start & end position as [generated.mpv_format.MPV_FORMAT_NONE] [generated.mpv_node].
-            try {
-              final property = 'start'.toNativeUtf8();
-              final value = 'none'.toNativeUtf8();
-              mpv.mpv_set_property_string(ctx, property, value);
-              calloc.free(property);
-              calloc.free(value);
-            } catch (exception, stacktrace) {
-              print(exception);
-              print(stacktrace);
-            }
-            try {
-              final property = 'end'.toNativeUtf8();
-              final value = 'none'.toNativeUtf8();
-              mpv.mpv_set_property_string(ctx, property, value);
-              calloc.free(property);
-              calloc.free(value);
-            } catch (exception, stacktrace) {
-              print(exception);
-              print(stacktrace);
-            }
             // --------------------------------------------------
             mpv.mpv_hook_continue(ctx, prop.ref.id);
         }
@@ -1638,6 +1591,7 @@ class NativePlayer extends PlatformPlayer {
       // Set --vid=no by default to prevent redundant video decoding.
       // [VideoController] internally sets --vid=auto upon attachment to enable video rendering & decoding.
       if (!test) 'vid': 'no',
+      'prefetch-playlist': 'yes',
       ...?configuration.options,
     };
 
@@ -1830,7 +1784,7 @@ class NativePlayer extends PlatformPlayer {
   /// Calls mpv command passed as [args].
   /// Automatically freeds memory after command sending.
   Future<void> command(List<String> args) {
-    final pointers = args.map<Pointer<Uint8>>((e) => e.toNativeUtf8()).toList();
+    final pointers = args.map((e) => e.toNativeUtf8()).toList();
     final arr = calloc<Pointer<Uint8>>(pointers.length + 1);
     for (int i = 0; i < args.length; i++) {
       arr[i] = pointers[i];

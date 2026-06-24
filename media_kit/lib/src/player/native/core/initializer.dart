@@ -26,18 +26,10 @@ abstract class Initializer {
     Map<String, String> options = const {},
   }) {
     try {
-      return InitializerNativeEventLoop.create(
-        mpv,
-        callback,
-        options,
-      );
+      return InitializerNativeEventLoop.create(mpv, callback, options);
     } catch (e, s) {
       Zone.current.handleUncaughtError(e, s);
-      return InitializerIsolate.create(
-        mpv,
-        callback,
-        options,
-      );
+      return InitializerIsolate.create(mpv, callback, options);
     }
   }
 

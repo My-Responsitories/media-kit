@@ -75,12 +75,11 @@ abstract class InitializerIsolate {
           }
           // Receiving event callbacks.
           else {
-            Pointer<mpv_event> event = Pointer.fromAddress(message);
+            final event = Pointer<mpv_event>.fromAddress(message);
             try {
               await callback(event);
-            } catch (exception, stacktrace) {
-              print(exception.toString());
-              print(stacktrace.toString());
+            } catch (error, stackTrace) {
+              Zone.current.handleUncaughtError(error, stackTrace);
             }
             port.send(true);
           }
