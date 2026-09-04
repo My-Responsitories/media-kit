@@ -18,7 +18,6 @@ import 'package:media_kit/src/player/platform_player.dart';
 
 import 'package:media_kit/src/player/native/core/initializer.dart';
 import 'package:media_kit/src/player/native/core/native_library.dart';
-import 'package:media_kit/src/player/native/core/initializer_native_event_loop.dart';
 
 import 'package:media_kit/src/player/native/utils/android_helper.dart';
 
@@ -36,7 +35,6 @@ import 'package:media_kit/generated/libmpv/bindings.dart' as generated;
 void nativeEnsureInitialized({String? libmpv}) {
   if (Platform.isAndroid) AndroidHelper.ensureInitialized(libmpv: libmpv);
   NativeLibrary.ensureInitialized(libmpv: libmpv);
-  InitializerNativeEventLoop.ensureInitialized();
 }
 
 /// {@template native_player}

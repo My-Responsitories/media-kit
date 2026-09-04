@@ -12,6 +12,7 @@ import 'dart:collection';
 import 'package:media_kit/ffi/ffi.dart';
 
 import 'package:media_kit/generated/libmpv/bindings.dart';
+import 'package:media_kit/src/player/native/player/real.dart';
 
 /// InitializerNativeEventLoop
 /// --------------------------
@@ -26,41 +27,33 @@ import 'package:media_kit/generated/libmpv/bindings.dart';
 ///
 abstract class InitializerNativeEventLoop {
   /// Initializes the |InitializerNativeEventLoop| class for usage.
-  static void ensureInitialized() {
-    try {
-      final dylib = DynamicLibrary.open(
-        Platform.isMacOS || Platform.isIOS
-            ? 'media_kit_native_event_loop.framework/media_kit_native_event_loop'
-            : Platform.isAndroid || Platform.isLinux
-            ? 'libmedia_kit_native_event_loop.so'
-            : Platform.isWindows
-            ? 'media_kit_native_event_loop.dll'
-            : throw UnimplementedError(),
-      );
-      _register = dylib
-          .lookupFunction<
-            MediaKitEventLoopHandlerRegisterCXX,
-            MediaKitEventLoopHandlerRegisterDart
-          >('MediaKitEventLoopHandlerRegister');
-      _notify = dylib
-          .lookupFunction<
-            MediaKitEventLoopHandlerNotifyCXX,
-            MediaKitEventLoopHandlerNotifyDart
-          >('MediaKitEventLoopHandlerNotify');
-      _dispose = dylib
-          .lookupFunction<
-            MediaKitEventLoopHandlerDisposeCXX,
-            MediaKitEventLoopHandlerDisposeDart
-          >('MediaKitEventLoopHandlerDispose');
-      dylib.lookupFunction<
-        MediaKitEventLoopHandlerInitializeCXX,
-        MediaKitEventLoopHandlerInitializeDart
-      >('MediaKitEventLoopHandlerInitialize')();
-    } catch (_) {
-      print(
-        'media_kit: WARNING: package:media_kit_native_event_loop not found.',
-      );
-    }
+  @pragma('vm:prefer-inline')
+  static Pointer<NativeFunction<MediaKitEventLoopHandlerCallback>>
+  _initHandle() {
+    final dylib = DynamicLibrary.open(
+      Platform.isMacOS || Platform.isIOS
+          ? 'media_kit_native_event_loop.framework/media_kit_native_event_loop'
+          : Platform.isAndroid || Platform.isLinux
+          ? 'libmedia_kit_native_event_loop.so'
+          : Platform.isWindows
+          ? 'media_kit_native_event_loop.dll'
+          : throw UnimplementedError(),
+    );
+
+    dylib.lookupFunction<
+      MediaKitEventLoopHandlerInitializeCXX,
+      MediaKitEventLoopHandlerInitializeDart
+    >('MediaKitEventLoopHandlerInitialize')(
+      NativeApi.postCObject,
+      _receiver.sendPort.nativePort,
+    );
+
+    final handle = dylib
+        .lookup<NativeFunction<MediaKitEventLoopHandlerCallback>>(
+          'MediaKitEventLoopHandlerCallback',
+        );
+    _handleWakeup();
+    return handle;
   }
 
   /// Creates & returns initialized [Pointer<mpv_handle>] whose event loop is running on native thread.
@@ -79,7 +72,7 @@ abstract class InitializerNativeEventLoop {
     for (final entry in options.entries) {
       final name = entry.key.toNativeUtf8();
       final value = entry.value.toNativeUtf8();
-      mpv.mpv_set_option_string(handle, name.cast(), value.cast());
+      mpv.mpv_set_option_string(handle, name, value);
       calloc.free(name);
       calloc.free(value);
     }
@@ -91,11 +84,7 @@ abstract class InitializerNativeEventLoop {
       // Save [callback] to invoke it inside [ReceivePort] listener.
       _callbacks[handle.address] = callback;
       // Register event callback.
-      _register(
-        handle.address,
-        NativeApi.postCObject.cast(),
-        _receiver.sendPort.nativePort,
-      );
+      mpv.mpv_set_wakeup_callback(handle, _handle, handle.cast());
     }
 
     return handle;
@@ -107,51 +96,54 @@ abstract class InitializerNativeEventLoop {
     // Native functions from the shared library should be resolved by now. If not, throw an exception.
     // Primarily, this will happen when the shared library is not found i.e. package:media_kit_native_event_loop is not installed.
 
-    _dispose(handle.address);
+    NativePlayer.mpv.mpv_set_wakeup_callback(handle, nullptr, nullptr);
     _callbacks.remove(handle.address);
   }
 
-  /// [ReceivePort] used to listen for `mpv_event`(s) from the native event loop.
-  /// A single [ReceivePort] is used for multiple instances.
-  static final _receiver = ReceivePort()
-    ..listen((dynamic message) async {
-      try {
-        final handle = message[0] as int;
-        final event = Pointer<mpv_event>.fromAddress(message[1]);
-        // Notify public event handler.
-        await _callbacks[handle]?.call(event);
-      } catch (error, stackTrace) {
-        Zone.current.handleUncaughtError(error, stackTrace);
+  /// [ReceivePort] used to listen for `mpv_set_wakeup_callback` from the native event loop.
+  static final _receiver = ReceivePort();
+
+  static Future<void> _handleWakeup() async {
+    await for (final int handle in _receiver) {
+      final callback = _callbacks[handle];
+      if (callback == null) continue;
+
+      final ctx = Pointer<mpv_handle>.fromAddress(handle);
+      while (true) {
+        final event = NativePlayer.mpv.mpv_wait_event(ctx, 0);
+        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) break;
+        try {
+          await callback(event);
+        } catch (error, stackTrace) {
+          Zone.current.handleUncaughtError(error, stackTrace);
+        }
       }
-      // Notify native event loop that event has been handled & it is safe to move onto next `mpv_wait_event`.
-      _notify(message[0]);
-    });
+    }
+  }
 
   // Registered [callback]s to receive [mpv_event](s) from the native event loop.
   static final _callbacks =
       HashMap<int, FutureOr<void> Function(Pointer<mpv_event>)>();
-
-  // Resolved native functions from the shared library:
-
-  static late MediaKitEventLoopHandlerRegisterDart _register;
-  static late MediaKitEventLoopHandlerNotifyDart _notify;
-  static late MediaKitEventLoopHandlerDisposeDart _dispose;
+  static final _handle = _initHandle();
 }
 
 // Type definitions for native functions in the shared library.
 
 // C/C++:
 
-typedef MediaKitEventLoopHandlerRegisterCXX =
-    Void Function(Int64 handle, Pointer<Void> callback, Int64 port);
-typedef MediaKitEventLoopHandlerNotifyCXX = Void Function(Int64 handle);
-typedef MediaKitEventLoopHandlerDisposeCXX = Void Function(Int64 handle);
-typedef MediaKitEventLoopHandlerInitializeCXX = Void Function();
+typedef MediaKitEventLoopHandlerInitializeCXX =
+    Void Function(
+      Pointer<NativeFunction<Int8 Function(Int64, Pointer<Dart_CObject>)>>
+      callback,
+      Int64 port,
+    );
+typedef MediaKitEventLoopHandlerCallback = Void Function(Pointer<Void> context);
 
 // Dart:
 
-typedef MediaKitEventLoopHandlerRegisterDart =
-    void Function(int handle, Pointer<Void> callback, int port);
-typedef MediaKitEventLoopHandlerNotifyDart = void Function(int handle);
-typedef MediaKitEventLoopHandlerDisposeDart = void Function(int handle);
-typedef MediaKitEventLoopHandlerInitializeDart = void Function();
+typedef MediaKitEventLoopHandlerInitializeDart =
+    void Function(
+      Pointer<NativeFunction<Int8 Function(Int64, Pointer<Dart_CObject>)>>
+      callback,
+      int port,
+    );
