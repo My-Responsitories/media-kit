@@ -47,7 +47,7 @@ dev_dependencies:
 
 ffigen:
   name: MPV
-  output: bin/generated/libmpv/bindings.dart
+  output: lib/generated/libmpv/bindings.dart
   headers:
     entry-points:
       - headers/client.h
@@ -68,7 +68,13 @@ ffigen:
       - 'mpv_.*'
     leaf:
       include:
+        - 'mpv_get_time_ns'
+        - 'mpv_get_time_us'
+        - 'mpv_client_name'
+        - 'mpv_client_id'
         - 'mpv_client_api_version'
+        - 'mpv_event_name'
+        - 'mpv_error_string'
   structs:
     include:
       - 'mpv_.*'
