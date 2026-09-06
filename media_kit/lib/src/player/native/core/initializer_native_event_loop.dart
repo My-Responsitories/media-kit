@@ -109,15 +109,16 @@ abstract class InitializerNativeEventLoop {
       if (callback == null) continue;
 
       final ctx = Pointer<mpv_handle>.fromAddress(handle);
-      while (true) {
+      while (await Future.microtask(() async {
         final event = NativePlayer.mpv.mpv_wait_event(ctx, 0);
-        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) break;
+        if (event.ref.event_id == mpv_event_id.MPV_EVENT_NONE) return false;
         try {
           await callback(event);
         } catch (error, stackTrace) {
           Zone.current.handleUncaughtError(error, stackTrace);
         }
-      }
+        return _callbacks.containsKey(handle);
+      })) {}
     }
   }
 
