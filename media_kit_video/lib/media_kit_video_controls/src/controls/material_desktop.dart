@@ -560,14 +560,6 @@ class _MaterialDesktopVideoControlsState
                     const Duration(seconds: 2);
                 controller(context).player.seek(rate);
               },
-              const SingleActivator(LogicalKeyboardKey.arrowUp): () {
-                final volume = controller(context).player.state.volume + 5.0;
-                controller(context).player.setVolume(volume.clamp(0.0, 100.0));
-              },
-              const SingleActivator(LogicalKeyboardKey.arrowDown): () {
-                final volume = controller(context).player.state.volume - 5.0;
-                controller(context).player.setVolume(volume.clamp(0.0, 100.0));
-              },
               const SingleActivator(LogicalKeyboardKey.keyF): () =>
                   toggleFullscreen(context),
               const SingleActivator(LogicalKeyboardKey.escape): () =>
@@ -588,26 +580,7 @@ class _MaterialDesktopVideoControlsState
               shadowColor: const Color(0x00000000),
               surfaceTintColor: const Color(0x00000000),
               child: Listener(
-                onPointerSignal: _theme(context).modifyVolumeOnScroll
-                    ? (e) {
-                        if (e is PointerScrollEvent) {
-                          if (e.delta.dy > 0) {
-                            final volume =
-                                controller(context).player.state.volume - 5.0;
-                            controller(context)
-                                .player
-                                .setVolume(volume.clamp(0.0, 100.0));
-                          }
-                          if (e.delta.dy < 0) {
-                            final volume =
-                                controller(context).player.state.volume + 5.0;
-                            controller(context)
-                                .player
-                                .setVolume(volume.clamp(0.0, 100.0));
-                          }
-                        }
-                      }
-                    : null,
+                onPointerSignal: null,
                 child: GestureDetector(
                   onTapDown: !_theme(context).playAndPauseOnTap
                       ? null
@@ -637,24 +610,7 @@ class _MaterialDesktopVideoControlsState
                             toggleFullscreen(context);
                           }
                         },
-                  onPanUpdate: _theme(context).modifyVolumeOnScroll
-                      ? (e) {
-                          if (e.delta.dy > 0) {
-                            final volume =
-                                controller(context).player.state.volume - 5.0;
-                            controller(context)
-                                .player
-                                .setVolume(volume.clamp(0.0, 100.0));
-                          }
-                          if (e.delta.dy < 0) {
-                            final volume =
-                                controller(context).player.state.volume + 5.0;
-                            controller(context)
-                                .player
-                                .setVolume(volume.clamp(0.0, 100.0));
-                          }
-                        }
-                      : null,
+                  onPanUpdate: null,
                   child: MouseRegion(
                     cursor:
                         (_theme(context).hideMouseOnControlsRemoval && !mount)
@@ -1371,7 +1327,7 @@ class MaterialDesktopVolumeButton extends StatefulWidget {
 class MaterialDesktopVolumeButtonState
     extends State<MaterialDesktopVolumeButton>
     with SingleTickerProviderStateMixin {
-  late double volume = controller(context).player.state.volume;
+  late double volume = 100;
 
   StreamSubscription<double>? subscription;
 
@@ -1385,16 +1341,6 @@ class MaterialDesktopVolumeButtonState
     if (mounted) {
       super.setState(fn);
     }
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    subscription ??= controller(context).player.stream.volume.listen((event) {
-      setState(() {
-        volume = event;
-      });
-    });
   }
 
   @override

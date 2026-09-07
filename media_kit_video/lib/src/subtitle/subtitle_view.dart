@@ -4,19 +4,17 @@
 /// All rights reserved.
 /// Use of this source code is governed by MIT license that can be found in the LICENSE file.
 import 'dart:async';
-import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'package:media_kit_video/src/video_controller/video_controller.dart';
 
 /// {@template subtitle_view}
-///
 /// SubtitleView
 /// ------------
 ///
 /// [SubtitleView] widget is used to display the subtitles on top of the [Video].
-///
-/// {@endtemplate}
 class SubtitleView extends StatefulWidget {
   /// The [VideoController] reference to control this [SubtitleView] output.
   final VideoController controller;
@@ -24,11 +22,17 @@ class SubtitleView extends StatefulWidget {
   /// The configuration to be used for the subtitles.
   final SubtitleViewConfiguration configuration;
 
+  final bool enableDragSubtitle;
+
+  final ValueChanged<EdgeInsets>? onUpdatePadding;
+
   /// {@macro subtitle_view}
   const SubtitleView({
     super.key,
     required this.controller,
     required this.configuration,
+    this.enableDragSubtitle = false,
+    this.onUpdatePadding,
   });
 
   @override
@@ -36,12 +40,12 @@ class SubtitleView extends StatefulWidget {
 }
 
 class SubtitleViewState extends State<SubtitleView> {
-  late List<String> subtitle = widget.controller.player.state.subtitle;
+  late Subtitle subtitle = widget.controller.player.state.subtitle;
   late EdgeInsets padding = widget.configuration.padding;
   late Duration duration = const Duration(milliseconds: 100);
 
   // The [StreamSubscription] to listen to the subtitle changes.
-  StreamSubscription<List<String>>? subscription;
+  StreamSubscription<Subtitle>? subscription;
 
   // The reference width for calculating the visible text scale factor.
   static const kTextScaleFactorReferenceWidth = 1920.0;
@@ -81,38 +85,54 @@ class SubtitleViewState extends State<SubtitleView> {
     });
   }
 
+  @override
+  void didUpdateWidget(SubtitleView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    padding = widget.configuration.padding;
+  }
+
   /// {@macro subtitle_view}
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Calculate the visible text scale factor.
-
-        final nr = (constraints.maxWidth * constraints.maxHeight);
-        const dr =
-            kTextScaleFactorReferenceWidth * kTextScaleFactorReferenceHeight;
-        final textScaleFactor = sqrt((nr / dr).clamp(0.0, 1.0));
-
-        final textScaler = widget.configuration.textScaler ??
-            TextScaler.linear(textScaleFactor);
-        return Material(
-          color: Colors.transparent,
-          child: AnimatedContainer(
-            padding: padding,
-            duration: duration,
-            alignment: Alignment.bottomCenter,
-            child: Text(
-              [
-                for (final line in subtitle)
-                  if (line.trim().isNotEmpty) line.trim(),
-              ].join('\n'),
-              style: widget.configuration.style,
-              textAlign: widget.configuration.textAlign,
-              textScaler: textScaler,
-            ),
-          ),
+    Widget text(TextStyle style) => Text(
+          subtitle.toString(),
+          style: style,
+          textAlign: widget.configuration.textAlign,
+          textScaler: const TextScaler.linear(1),
         );
-      },
+
+    Widget subtitleView() {
+      if (widget.configuration.strokeStyle != null) {
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            text(widget.configuration.strokeStyle!),
+            text(widget.configuration.style),
+          ],
+        );
+      }
+      return text(widget.configuration.style);
+    }
+
+    return AnimatedContainer(
+      margin: padding,
+      duration: duration,
+      alignment: Alignment.bottomCenter,
+      child: widget.enableDragSubtitle
+          ? GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: (details) {
+                double bottom =
+                    clampDouble(padding.bottom - details.delta.dy, 0, 200);
+                padding = padding.copyWith(bottom: bottom);
+                setState(() {});
+              },
+              onVerticalDragEnd: (details) {
+                widget.onUpdatePadding?.call(padding);
+              },
+              child: subtitleView(),
+            )
+          : subtitleView(),
     );
   }
 }
@@ -130,11 +150,13 @@ class SubtitleViewConfiguration {
   /// The text style to be used for the subtitles.
   final TextStyle style;
 
+  final TextStyle? strokeStyle;
+
   /// The text alignment to be used for the subtitles.
   final TextAlign textAlign;
 
-  /// The text scaler to be used for the subtitles.
-  final TextScaler? textScaler;
+  /// The text scale factor to be used for the subtitles.
+  final double? textScaleFactor;
 
   /// The padding to be used for the subtitles.
   final EdgeInsets padding;
@@ -151,8 +173,9 @@ class SubtitleViewConfiguration {
       fontWeight: FontWeight.normal,
       backgroundColor: Color(0xaa000000),
     ),
+    this.strokeStyle,
     this.textAlign = TextAlign.center,
-    this.textScaler,
+    this.textScaleFactor,
     this.padding = const EdgeInsets.fromLTRB(
       16.0,
       0.0,
@@ -160,4 +183,43 @@ class SubtitleViewConfiguration {
       24.0,
     ),
   });
+
+  SubtitleViewConfiguration copyWith({
+    bool? visible,
+    TextStyle? style,
+    TextStyle? strokeStyle,
+    TextAlign? textAlign,
+    double? textScaleFactor,
+    EdgeInsets? padding,
+  }) {
+    return SubtitleViewConfiguration(
+      visible: visible ?? this.visible,
+      style: style ?? this.style,
+      strokeStyle: strokeStyle ?? this.strokeStyle,
+      textAlign: textAlign ?? this.textAlign,
+      textScaleFactor: textScaleFactor ?? this.textScaleFactor,
+      padding: padding ?? this.padding,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) {
+      return true;
+    }
+    if (other.runtimeType != runtimeType) {
+      return false;
+    }
+    return other is SubtitleViewConfiguration &&
+        other.visible == visible &&
+        other.style == style &&
+        other.strokeStyle == strokeStyle &&
+        other.textAlign == textAlign &&
+        other.textScaleFactor == textScaleFactor &&
+        other.padding == padding;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      visible, style, strokeStyle, textAlign, textScaleFactor, padding);
 }

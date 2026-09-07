@@ -4,7 +4,7 @@ homepage: https://github.com/media-kit/media-kit
 repository: https://github.com/media-kit/media-kit
 version: 1.2.6
 environment:
-  sdk: ^3.6.0
+  sdk: ">=3.8.0 <4.0.0"
 resolution: workspace
 
 screenshots:
@@ -34,20 +34,15 @@ topics:
 
 dependencies:
   collection: ^1.19.0
-  http: ^1.2.2
-  image: ^4.8.0
+  jni: ^1.0.3
   meta: ^1.15.0
   path: ^1.9.1
-  safe_local_storage: ^2.0.3
   synchronized: ^3.3.0
-  universal_platform: ^1.1.0
-  uri_parser: ^3.0.2
-  uuid: ^4.5.3
-  web: ^1.1.1
 
 dev_dependencies:
   lints: any
   test: any
+  http: any
 
 ffigen:
   name: MPV
@@ -55,8 +50,33 @@ ffigen:
   headers:
     entry-points:
       - headers/client.h
-  dart-bool: true
-
-flutter:
-  assets:
-    - assets/web/
+  type-map:
+    native-types:
+      char:
+        lib: ffi
+        c-type: Uint8
+        dart-type: int
+  exclude-all-by-default: true
+  enums:
+    include:
+      - 'mpv_.*'
+    as-int:
+      exclude: []
+  functions:
+    include:
+      - 'mpv_.*'
+    leaf:
+      include:
+        - 'mpv_client_api_version'
+  structs:
+    include:
+      - 'mpv_.*'
+  unions:
+    include:
+      - 'mpv_.*'
+  globals:
+    include:
+      - 'mpv_.*'
+  macros:
+    include:
+      - 'mpv_.*'

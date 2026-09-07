@@ -90,15 +90,16 @@ class VideoViewParameters {
           other.focusNode == focusNode;
 
   @override
-  int get hashCode =>
-      width.hashCode ^
-      height.hashCode ^
-      fit.hashCode ^
-      fill.hashCode ^
-      alignment.hashCode ^
-      aspectRatio.hashCode ^
-      filterQuality.hashCode ^
-      controls.hashCode ^
-      subtitleViewConfiguration.hashCode ^
-      focusNode.hashCode;
+  int get hashCode => Object.hash(
+    width,
+    height,
+    fit,
+    fill,
+    alignment,
+    aspectRatio,
+    filterQuality,
+    controls,
+    subtitleViewConfiguration,
+    focusNode.hashCode,
+  );
 }

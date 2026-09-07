@@ -8,16 +8,13 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video_controls/media_kit_video_controls.dart';
-
 import 'package:media_kit_video/src/subtitle/subtitle_view.dart';
 import 'package:media_kit_video/media_kit_video_controls/media_kit_video_controls.dart'
     as media_kit_video_controls;
 import 'package:media_kit_video/src/utils/dispose_safe_notifer.dart';
 
-import 'package:media_kit_video/src/utils/wakelock.dart';
 import 'package:media_kit_video/src/video_view_parameters.dart';
 import 'package:media_kit_video/src/video_controller/video_controller.dart';
-import 'package:media_kit_video/src/video_controller/platform_video_controller.dart';
 
 /// {@template video}
 ///
@@ -146,11 +143,10 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
   late ValueNotifier<VideoViewParameters> videoViewParametersNotifier;
   late bool _disposeNotifiers;
   final _subtitleViewKey = GlobalKey<SubtitleViewState>();
-  final _wakelock = Wakelock();
   final _subscriptions = <StreamSubscription>[];
-  late int? _width = widget.controller.player.state.width;
-  late int? _height = widget.controller.player.state.height;
-  late bool _visible = (_width ?? 0) > 0 && (_height ?? 0) > 0;
+  late int _width = widget.controller.player.state.width;
+  late int _height = widget.controller.player.state.height;
+  late bool _visible = _width > 0 && _height > 0;
 
   bool _pauseDueToPauseUponEnteringBackgroundMode = false;
   // Public API:
@@ -306,55 +302,25 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
     // --------------------------------------------------
     // Do not show the video frame until width & height are available.
     // Since [ValueNotifier<Rect?>] inside [VideoController] only gets updated by the render loop (i.e. it will not fire when video's width & height are not available etc.), it's important to handle this separately here.
-    _subscriptions.addAll(
-      [
-        widget.controller.player.stream.width.listen(
-          (value) {
-            _width = value;
-            final visible = (_width ?? 0) > 0 && (_height ?? 0) > 0;
-            if (_visible != visible) {
-              setState(() {
-                _visible = visible;
-              });
-            }
-          },
-        ),
-        widget.controller.player.stream.height.listen(
-          (value) {
-            _height = value;
-            final visible = (_width ?? 0) > 0 && (_height ?? 0) > 0;
-            if (_visible != visible) {
-              setState(() {
-                _visible = visible;
-              });
-            }
-          },
-        ),
-      ],
+    _subscriptions.add(
+      widget.controller.player.stream.size.listen(
+        (value) {
+          _width = value.$1;
+          _height = value.$2;
+          final visible = _width > 0 && _height > 0;
+          if (_visible != visible) {
+            setState(() {
+              _visible = visible;
+            });
+          }
+        },
+      ),
     );
-    // --------------------------------------------------
-    if (widget.wakelock) {
-      if (widget.controller.player.state.playing) {
-        _wakelock.enable();
-      }
-      _subscriptions.add(
-        widget.controller.player.stream.playing.listen(
-          (value) {
-            if (value) {
-              _wakelock.enable();
-            } else {
-              _wakelock.disable();
-            }
-          },
-        ),
-      );
-    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _wakelock.disable();
     for (final subscription in _subscriptions) {
       subscription.cancel();
     }
@@ -390,66 +356,51 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
                   child: FittedBox(
                     fit: videoViewParameters.fit,
                     alignment: videoViewParameters.alignment,
-                    child: ValueListenableBuilder<PlatformVideoController?>(
-                      valueListenable: widget.controller.notifier,
-                      builder: (context, notifier, _) => notifier == null
-                          ? const SizedBox.shrink()
-                          : ValueListenableBuilder<int?>(
-                              valueListenable: notifier.id,
-                              builder: (context, id, _) {
-                                return ValueListenableBuilder<Rect?>(
-                                  valueListenable: notifier.rect,
-                                  builder: (context, rect, _) {
-                                    if (id != null &&
-                                        rect != null &&
-                                        _visible) {
-                                      return SizedBox(
-                                        // Apply aspect ratio if provided.
-                                        width:
-                                            videoViewParameters.aspectRatio ==
-                                                    null
-                                                ? rect.width
-                                                : rect.height *
-                                                    videoViewParameters
-                                                        .aspectRatio!,
-                                        height: rect.height,
-                                        child: Stack(
-                                          children: [
-                                            const SizedBox(),
-                                            Positioned.fill(
-                                              child: Texture(
-                                                textureId: id,
-                                                filterQuality:
-                                                    videoViewParameters
-                                                        .filterQuality,
-                                              ),
-                                            ),
-                                            // Keep the |Texture| hidden before the first frame renders. In native implementation, if no default frame size is passed (through VideoController), a starting 1 pixel sized texture/surface is created to initialize the render context & check for H/W support.
-                                            // This is then resized based on the video dimensions & accordingly texture ID, texture, EGLDisplay, EGLSurface etc. (depending upon platform) are also changed. Just don't show that 1 pixel texture to the UI.
-                                            // NOTE: Unmounting |Texture| causes the |MarkTextureFrameAvailable| to not do anything on GNU/Linux.
-                                            if (rect.width <= 1.0 &&
-                                                rect.height <= 1.0)
-                                              Positioned.fill(
-                                                child: Container(
-                                                  color:
-                                                      videoViewParameters.fill,
-                                                ),
-                                              ),
-                                          ],
+                    child: ValueListenableBuilder<int?>(
+                      valueListenable: widget.controller.id,
+                      builder: (context, id, _) {
+                        return ValueListenableBuilder<Rect?>(
+                          valueListenable: widget.controller.rect,
+                          builder: (context, rect, _) {
+                            if (id != null && rect != null && _visible) {
+                              return SizedBox(
+                                // Apply aspect ratio if provided.
+                                width: videoViewParameters.aspectRatio == null
+                                    ? rect.width
+                                    : rect.height *
+                                        videoViewParameters.aspectRatio!,
+                                height: rect.height,
+                                child: Stack(
+                                  children: [
+                                    const SizedBox(),
+                                    Positioned.fill(
+                                      child: Texture(
+                                        textureId: id,
+                                        filterQuality:
+                                            videoViewParameters.filterQuality,
+                                      ),
+                                    ),
+                                    // Keep the |Texture| hidden before the first frame renders. In native implementation, if no default frame size is passed (through VideoController), a starting 1 pixel sized texture/surface is created to initialize the render context & check for H/W support.
+                                    // This is then resized based on the video dimensions & accordingly texture ID, texture, EGLDisplay, EGLSurface etc. (depending upon platform) are also changed. Just don't show that 1 pixel texture to the UI.
+                                    // NOTE: Unmounting |Texture| causes the |MarkTextureFrameAvailable| to not do anything on GNU/Linux.
+                                    if (rect.width <= 1.0 && rect.height <= 1.0)
+                                      Positioned.fill(
+                                        child: Container(
+                                          color: videoViewParameters.fill,
                                         ),
-                                      );
-                                    }
-                                    return const SizedBox.shrink();
-                                  },
-                                );
-                              },
-                            ),
+                                      ),
+                                  ],
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          },
+                        );
+                      },
                     ),
                   ),
                 ),
-                if (videoViewParameters.subtitleViewConfiguration.visible &&
-                    !(widget.controller.player.platform?.configuration.libass ??
-                        false))
+                if (videoViewParameters.subtitleViewConfiguration.visible)
                   Positioned.fill(
                     child: SubtitleView(
                       controller: widget.controller,

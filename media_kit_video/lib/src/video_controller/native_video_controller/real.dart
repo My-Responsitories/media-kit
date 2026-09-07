@@ -12,7 +12,6 @@ import 'package:synchronized/synchronized.dart';
 
 import 'package:media_kit/media_kit.dart';
 
-import 'package:media_kit_video/src/utils/query_decoders.dart';
 import 'package:media_kit_video/src/video_controller/platform_video_controller.dart';
 
 /// {@template native_video_controller}
@@ -50,62 +49,44 @@ class NativeVideoController extends PlatformVideoController {
   /// [Lock] used to synchronize [onLoadHooks], [onUnloadHooks] & [subscription].
   final lock = Lock();
 
-  NativePlayer get platform => player.platform as NativePlayer;
-
-  Future<void> setProperty(String key, String value) async {
-    await platform.setProperty(key, value, waitForInitialization: false);
-  }
-
-  Future<void> setProperties(Map<String, String> properties) async {
-    // ORDER IS IMPORTANT.
-    for (final entry in properties.entries) {
-      await setProperty(entry.key, entry.value);
-    }
-  }
-
   /// [StreamSubscription] for listening to video [Rect].
   StreamSubscription<VideoParams>? videoParamsSubscription;
 
   /// {@macro native_video_controller}
-  NativeVideoController._(
-    super.player,
-    super.configuration,
-  )   : width = configuration.width,
+  NativeVideoController._(super.player, super.configuration)
+      : width = configuration.width,
         height = configuration.height {
     videoParamsSubscription = player.stream.videoParams.listen(
-      (event) => lock.synchronized(() async {
-        if ([0, null].contains(event.dw) || [0, null].contains(event.dh)) {
-          return;
+      (event) => lock.synchronized(() {
+        final w = event.dw;
+        final h = event.dh;
+        if (w == null || w == 0 || h == null || h == 0) {
+          return null;
         }
-
-        final int handle = await player.handle;
 
         final int width;
         final int height;
         if (event.rotate == 0 || event.rotate == 180) {
-          width = event.dw ?? 0;
-          height = event.dh ?? 0;
+          width = w;
+          height = h;
         } else {
           // width & height are swapped for 90 or 270 degrees rotation.
-          width = event.dh ?? 0;
-          height = event.dw ?? 0;
+          width = h;
+          height = w;
         }
 
         if (videoParamsWidth == width && videoParamsHeight == height) {
-          return;
+          return null;
         }
 
         videoParamsWidth = width;
         videoParamsHeight = height;
 
-        await _channel.invokeMethod(
-          'VideoOutputManager.SetSize',
-          {
-            'handle': handle.toString(),
-            'width': width.toString(),
-            'height': height.toString(),
-          },
-        );
+        return _channel.invokeMethod('VideoOutputManager.SetSize', {
+          'handle': player.handle.toString(),
+          'width': width.toString(),
+          'height': height.toString(),
+        });
       }),
     );
   }
@@ -115,51 +96,30 @@ class NativeVideoController extends PlatformVideoController {
     Player player,
     VideoControllerConfiguration configuration,
   ) async {
-    // Update [configuration] to have default values.
-    configuration = configuration.copyWith(
-      vo: configuration.vo ?? 'libmpv',
-      hwdec: configuration.hwdec ?? 'auto',
-    );
-
     // Retrieve the native handle of the [Player].
-    final handle = await player.handle;
+    final handle = player.handle;
     // Return the existing [VideoController] if it's already created.
     if (_controllers.containsKey(handle)) {
       return _controllers[handle]!;
     }
 
-    // In case no video-decoders are found, this means media_kit_libs_***_audio is being used.
-    // Thus, --vid=no is required to prevent libmpv from trying to decode video (otherwise bad things may happen).
-    //
-    // Search for common H264 decoder to check if video support is available.
-    final decoders = await queryDecoders(handle);
-    if (!decoders.contains('h264')) {
-      throw UnsupportedError(
-        '[VideoController] is not available.'
-        ' '
-        'Please use media_kit_libs_***_video instead of media_kit_libs_***_audio.',
-      );
-    }
-
     // Creation:
-    final controller = NativeVideoController._(
-      player,
-      configuration,
-    );
+    final controller = NativeVideoController._(player, configuration);
 
     // Register [_dispose] for execution upon [Player.dispose].
-    player.platform?.release.add(controller._dispose);
+    player.release.add(controller.dispose);
 
     // Store the [NativeVideoController] in the [_controllers].
     _controllers[handle] = controller;
 
-    await controller.setProperties(
-      {
-        'vo': configuration.vo!,
-        'hwdec': configuration.hwdec!,
-        'vid': 'auto',
-      },
-    );
+    final values = {
+      'vo': configuration.vo ?? 'libmpv',
+      'hwdec': configuration.hwdec ?? 'auto',
+      'vid': 'auto',
+    };
+    for (final entry in values.entries) {
+      player.setProperty(entry.key, entry.value);
+    }
 
     // Wait until first texture ID is received.
     // We are not waiting on the native-side itself because it will block the UI thread.
@@ -174,18 +134,14 @@ class NativeVideoController extends PlatformVideoController {
 
     controller.id.addListener(listener);
 
-    await _channel.invokeMethod(
-      'VideoOutputManager.Create',
-      {
-        'handle': handle.toString(),
-        'configuration': {
-          'width': configuration.width.toString(),
-          'height': configuration.height.toString(),
-          'enableHardwareAcceleration':
-              configuration.enableHardwareAcceleration,
-        },
+    await _channel.invokeMethod('VideoOutputManager.Create', {
+      'handle': handle.toString(),
+      'configuration': {
+        'width': configuration.width.toString(),
+        'height': configuration.height.toString(),
+        'enableHardwareAcceleration': configuration.enableHardwareAcceleration,
       },
-    );
+    });
 
     await completer.future;
     controller.id.removeListener(listener);
@@ -201,19 +157,16 @@ class NativeVideoController extends PlatformVideoController {
   /// * “Premature optimization is the root of all evil”
   /// * “With great power comes great responsibility”
   @override
-  Future<void> setSize({
-    int? width,
-    int? height,
-  }) async {
-    final handle = await player.handle;
+  Future<void>? setSize({int? width, int? height}) {
     if (this.width == width && this.height == height) {
       // No need to resize if the requested size is same as the current size.
-      return;
+      return null;
     }
+    final handle = player.handle;
     if (width != null && height != null) {
       this.width = width;
       this.height = height;
-      await _channel.invokeMethod(
+      return _channel.invokeMethod(
         'VideoOutputManager.SetSize',
         {
           'handle': handle.toString(),
@@ -224,7 +177,7 @@ class NativeVideoController extends PlatformVideoController {
     } else {
       this.width = null;
       this.height = null;
-      await _channel.invokeMethod(
+      return _channel.invokeMethod(
         'VideoOutputManager.SetSize',
         {
           'handle': handle.toString(),
@@ -236,17 +189,15 @@ class NativeVideoController extends PlatformVideoController {
   }
 
   /// Disposes the instance. Releases allocated resources back to the system.
-  Future<void> _dispose() async {
+  @override
+  Future<void> dispose() async {
     super.dispose();
     await videoParamsSubscription?.cancel();
-    final handle = await player.handle;
+    final handle = player.handle;
     _controllers.remove(handle);
-    await _channel.invokeMethod(
-      'VideoOutputManager.Dispose',
-      {
-        'handle': handle.toString(),
-      },
-    );
+    await _channel.invokeMethod('VideoOutputManager.Dispose', {
+      'handle': handle.toString(),
+    });
   }
 
   /// Currently created [NativeVideoController]s.
@@ -256,44 +207,33 @@ class NativeVideoController extends PlatformVideoController {
   /// [MethodChannel] for invoking platform specific native implementation.
   static final _channel =
       const MethodChannel('com.alexmercerind/media_kit_video')
-        ..setMethodCallHandler(
-          (MethodCall call) async {
-            try {
-              debugPrint(call.method.toString());
-              debugPrint(call.arguments.toString());
-              switch (call.method) {
-                case 'VideoOutput.Resize':
-                  {
-                    // Notify about updated texture ID & [Rect].
-                    final int handle = call.arguments['handle'];
-                    final Rect rect = Rect.fromLTWH(
-                      call.arguments['rect']['left'] * 1.0,
-                      call.arguments['rect']['top'] * 1.0,
-                      call.arguments['rect']['width'] * 1.0,
-                      call.arguments['rect']['height'] * 1.0,
-                    );
-                    final int id = call.arguments['id'];
-                    _controllers[handle]?.rect.value = rect;
-                    _controllers[handle]?.id.value = id;
-                    // Notify about the first frame being rendered.
-                    if (rect.width > 0 && rect.height > 0) {
-                      final completer = _controllers[handle]
-                          ?.waitUntilFirstFrameRenderedCompleter;
-                      if (!(completer?.isCompleted ?? true)) {
-                        completer?.complete();
-                      }
-                    }
-                    break;
-                  }
-                default:
-                  {
-                    break;
-                  }
+        ..setMethodCallHandler((MethodCall call) {
+          assert(call.method == 'VideoOutput.Resize');
+          try {
+            final Map args = call.arguments;
+            debugPrint(call.method);
+            debugPrint(args.toString());
+            // Notify about updated texture ID & [Rect].
+            final ctr = _controllers[args['handle'] as int];
+            if (ctr != null) {
+              final Map rectArgs = args['rect'];
+              final Rect rect = Rect.fromLTWH(
+                (rectArgs['left'] as num).toDouble(),
+                (rectArgs['top'] as num).toDouble(),
+                (rectArgs['width'] as num).toDouble(),
+                (rectArgs['height'] as num).toDouble(),
+              );
+              ctr.rect.value = rect;
+              ctr.id.value = args['id'] as int;
+              // Notify about the first frame being rendered.
+              if (rect.width > 0 && rect.height > 0) {
+                final completer = ctr.waitUntilFirstFrameRenderedCompleter;
+                if (!completer.isCompleted) completer.complete();
               }
-            } catch (exception, stacktrace) {
-              debugPrint(exception.toString());
-              debugPrint(stacktrace.toString());
             }
-          },
-        );
+          } catch (error, stackTrace) {
+            Zone.current.handleUncaughtError(error, stackTrace);
+          }
+          return Future.value();
+        });
 }

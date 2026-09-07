@@ -3,19 +3,17 @@
 /// Copyright © 2021 & onwards, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
 /// All rights reserved.
 /// Use of this source code is governed by MIT license that can be found in the LICENSE file.
-import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:media_kit/generated/libmpv/bindings.dart' as generated;
 import 'package:path/path.dart' as path;
-import 'package:safe_local_storage/safe_local_storage.dart';
-import 'package:synchronized/synchronized.dart';
 
 import 'package:media_kit/ffi/src/allocation.dart';
-import 'package:media_kit/src/player/native/utils/temp_file.dart';
-import 'package:media_kit/src/values.dart';
 
 /// Callback invoked to notify about the released references.
-typedef NativeReferenceHolderCallback = void Function(List<Pointer<Void>>);
+typedef NativeReferenceHolderCallback =
+    void Function(List<Pointer<generated.mpv_handle>>);
 
 /// {@template native_reference_holder}
 ///
@@ -25,42 +23,40 @@ typedef NativeReferenceHolderCallback = void Function(List<Pointer<Void>>);
 /// These references can be used to dispose the [Pointer<generated.mpv_handle>]s when they are no longer needed i.e. upon hot-restart.
 ///
 /// {@endtemplate}
-class NativeReferenceHolder {
+abstract final class NativeReferenceHolder {
   /// Maximum number of references that can be held.
   static const int kReferenceBufferSize = 512;
-
-  /// Singleton instance.
-  static final NativeReferenceHolder instance = NativeReferenceHolder._();
 
   /// Whether the [instance] is initialized.
   static bool initialized = false;
 
-  /// {@macro native_reference_holder}
-  NativeReferenceHolder._();
-
   /// Initializes the instance.
   static void ensureInitialized(NativeReferenceHolderCallback callback) {
-    if (!kDebugMode) return;
     if (initialized) return;
     initialized = true;
-    instance._ensureInitialized(callback);
+    _ensureInitialized(callback);
   }
 
-  void _ensureInitialized(NativeReferenceHolderCallback callback) async {
-    if (!await _file.exists_()) {
+  static void _ensureInitialized(NativeReferenceHolderCallback callback) {
+    if (!_file.existsSync()) {
       // Allocate reference buffer.
-      _referenceBuffer = calloc<IntPtr>(kReferenceBufferSize);
+      _referenceBuffer = calloc(kReferenceBufferSize);
       final address = _referenceBuffer.address;
-      await _file.write_(address.toString());
+      final raf = _file.openSync(mode: FileMode.writeOnly);
+      raf.writeFromSync(
+        (ByteData(8)..setInt64(0, address)).buffer.asUint8List(),
+      );
+      raf.close();
       print('$kTag Allocated $address');
     } else {
       // Locate reference buffer.
-      final address = int.parse((await _file.readAsString_())!);
-      _referenceBuffer = Pointer<IntPtr>.fromAddress(address);
+      final raf = _file.openSync();
+      final address = raf.readSync(8).buffer.asByteData().getInt64(0);
+      _referenceBuffer = Pointer.fromAddress(address);
       print('$kTag Located $address');
     }
 
-    final references = <Pointer<Void>>[];
+    final references = <Pointer<generated.mpv_handle>>[];
 
     for (int i = 0; i < kReferenceBufferSize; i++) {
       final referencePtr = _referenceBuffer + i;
@@ -72,63 +68,49 @@ class NativeReferenceHolder {
     }
 
     callback(references);
-
-    _completer.complete();
   }
 
   /// Saves the reference.
-  Future<void> add(Pointer reference) async {
+  static void add(Pointer reference) {
     if (!initialized) return;
     if (reference == nullptr) return;
-    await _completer.future;
-    return _lock.synchronized(() async {
-      for (int i = 0; i < kReferenceBufferSize; i++) {
-        final referenceValue = _referenceBuffer + i;
-        final referencePtr = Pointer.fromAddress(referenceValue.value);
-        // NOTE: Do not compare .value with .address. Bad things may happen on 32-bit systems.
-        if (referencePtr.address == 0) {
-          referenceValue.value = reference.address;
-          break;
-        }
+    for (int i = 0; i < kReferenceBufferSize; i++) {
+      final referenceValue = _referenceBuffer + i;
+      final referencePtr = Pointer.fromAddress(referenceValue.value);
+      // NOTE: Do not compare .value with .address. Bad things may happen on 32-bit systems.
+      if (referencePtr.address == 0) {
+        referenceValue.value = reference.address;
+        break;
       }
-    });
+    }
   }
 
   /// Removes the reference.
-  Future<void> remove(Pointer reference) async {
+  static void remove(Pointer reference) {
     if (!initialized) return;
     if (reference == nullptr) return;
-    await _completer.future;
-    return _lock.synchronized(() async {
-      for (int i = 0; i < kReferenceBufferSize; i++) {
-        final referenceValue = _referenceBuffer + i;
-        final referencePtr = Pointer.fromAddress(referenceValue.value);
-        // NOTE: Do not compare .value with .address. Bad things may happen on 32-bit systems.
-        if (referencePtr.address == reference.address) {
-          referenceValue.value = 0;
-          break;
-        }
+    for (int i = 0; i < kReferenceBufferSize; i++) {
+      final referenceValue = _referenceBuffer + i;
+      final referencePtr = Pointer.fromAddress(referenceValue.value);
+      // NOTE: Do not compare .value with .address. Bad things may happen on 32-bit systems.
+      if (referencePtr.address == reference.address) {
+        referenceValue.value = 0;
+        break;
       }
-    });
+    }
   }
-
-  /// [Lock] used to synchronize access to the reference buffer.
-  final Lock _lock = Lock();
-
-  /// [Completer] used to wait for the reference buffer to be allocated.
-  final Completer<void> _completer = Completer<void>();
 
   /// [File] used to store [int] address to the reference buffer.
   /// This is necessary to have a persistent to the reference buffer across hot-restarts.
-  final File _file = File(
+  static final File _file = File(
     path.join(
-      TempFile.directory,
+      Directory.systemTemp.path,
       'com.alexmercerind.media_kit.NativeReferenceHolder.$pid',
     ),
   );
 
   /// [Pointer] to the reference buffer.
-  late final Pointer<IntPtr> _referenceBuffer;
+  static late final Pointer<Size> _referenceBuffer;
 
   static const String kTag = 'media_kit: NativeReferenceHolder:';
 }

@@ -66,10 +66,6 @@ public class MediaKitVideoPlugin implements FlutterPlugin, MethodCallHandler {
                 result.success(null);
                 break;
             }
-            case "Utils.IsEmulator": {
-                result.success(Utils.isEmulator());
-                break;
-            }
             default: {
                 result.notImplemented();
                 break;

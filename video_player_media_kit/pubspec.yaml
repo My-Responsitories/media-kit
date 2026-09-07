@@ -23,7 +23,6 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
 
-  universal_platform: ^1.1.0
   video_player_platform_interface: ^6.3.0
 
 dev_dependencies:

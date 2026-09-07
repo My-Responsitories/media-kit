@@ -29,7 +29,7 @@ void main() {
     'initializer-init',
     () {
       expect(
-        Initializer(mpv).create((_) async {}),
+        Initializer.create((_) async {}),
         completes,
       );
     },
@@ -38,7 +38,7 @@ void main() {
     'initializer-create',
     () {
       expect(
-        Initializer(mpv).create((_) async {}),
+        Initializer.create((_) async {}),
         completes,
       );
     },
@@ -46,9 +46,9 @@ void main() {
   test(
     'initializer-dispose',
     () async {
-      final handle = await Initializer(mpv).create((_) async {});
+      final handle = await Initializer.create((_) async {});
       expect(
-        () => Initializer(mpv).dispose(handle),
+        () => Initializer.dispose(handle),
         returnsNormally,
       );
     },
@@ -68,11 +68,11 @@ void main() {
         expect(true, isTrue);
       });
 
-      final handle = await Initializer(mpv).create(
+      final handle = await Initializer.create(
         (event) async {
           if (event.ref.event_id == mpv_event_id.MPV_EVENT_PROPERTY_CHANGE) {
             final prop = event.ref.data.cast<mpv_event_property>();
-            if (prop.ref.name.cast<Utf8>().toDartString() == 'pause' &&
+            if (prop.ref.name.toDartString() == 'pause' &&
                 prop.ref.format == mpv_format.MPV_FORMAT_FLAG) {
               final value = prop.ref.data.cast<Bool>().value;
               expectPauseTrue(value);
@@ -114,13 +114,13 @@ void main() {
 
       await Future.delayed(const Duration(seconds: 5));
 
-      Initializer(mpv).dispose(handle);
+      Initializer.dispose(handle);
     },
   );
   test(
     'initializer-options-with-callback',
     () async {
-      final handle = await Initializer(mpv).create(
+      final handle = await Initializer.create(
         (_) async {},
         options: {
           'config': 'yes',
@@ -135,7 +135,7 @@ void main() {
         );
         calloc.free(name);
         expect(
-          value.cast<Utf8>().toDartString(),
+          value.toDartString(),
           'yes',
         );
       }
@@ -147,14 +147,14 @@ void main() {
         );
         calloc.free(name);
         expect(
-          value.cast<Utf8>().toDartString(),
+          value.toDartString(),
           dirname(Platform.script.toFilePath()),
         );
       }
 
       await Future.delayed(const Duration(seconds: 5));
 
-      Initializer(mpv).dispose(handle);
+      Initializer.dispose(handle);
     },
   );
 }

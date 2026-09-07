@@ -7,16 +7,8 @@ import 'dart:typed_data';
 
 import 'package:media_kit/ffi/src/allocation.dart';
 
-/// The contents of a native zero-terminated array of UTF-16 code units.
-///
-/// The Utf16 type itself has no functionality, it's only intended to be used
-/// through a `Pointer<Utf16>` representing the entire array. This pointer is
-/// the equivalent of a char pointer (`const wchar_t*`) in C code. The
-/// individual UTF-16 code units are stored in native byte order.
-final class Utf16 extends Opaque {}
-
 /// Extension method for converting a`Pointer<Utf16>` to a [String].
-extension Utf16Pointer on Pointer<Utf16> {
+extension Utf16Pointer on Pointer<Uint16> {
   /// The number of UTF-16 code units in this zero-terminated UTF-16 string.
   ///
   /// The UTF-16 code units of the strings are the non-zero code units up to
@@ -53,16 +45,11 @@ extension Utf16Pointer on Pointer<Utf16> {
       String.fromCharCodes(codeUnits.asTypedList(length));
 
   static String _toUnknownLengthString(Pointer<Uint16> codeUnits) {
-    final buffer = StringBuffer();
     var i = 0;
-    while (true) {
-      final char = (codeUnits + i).value;
-      if (char == 0) {
-        return buffer.toString();
-      }
-      buffer.writeCharCode(char);
+    while ((codeUnits + i).value != 0) {
       i++;
     }
+    return String.fromCharCodes(codeUnits.asTypedList(i));
   }
 
   static int _length(Pointer<Uint16> codeUnits) {
@@ -76,7 +63,8 @@ extension Utf16Pointer on Pointer<Utf16> {
   void _ensureNotNullptr(String operation) {
     if (this == nullptr) {
       throw UnsupportedError(
-          "Operation '$operation' not allowed on a 'nullptr'.");
+        "Operation '$operation' not allowed on a 'nullptr'.",
+      );
     }
   }
 }
@@ -90,7 +78,7 @@ extension StringUtf16Pointer on String {
   /// not passed.
   ///
   /// Returns an [allocator]-allocated pointer to the result.
-  Pointer<Utf16> toNativeUtf16({Allocator allocator = malloc}) {
+  Pointer<Uint16> toNativeUtf16({Allocator allocator = malloc}) {
     final units = codeUnits;
     final Pointer<Uint16> result = allocator<Uint16>(units.length + 1);
     final Uint16List nativeString = result.asTypedList(units.length + 1);

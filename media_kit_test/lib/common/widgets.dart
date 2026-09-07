@@ -1,19 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 
 import 'package:media_kit/media_kit.dart';
 
-import '../common/sources/sources.dart';
-
 class TracksSelector extends StatefulWidget {
   final Player player;
 
-  const TracksSelector({
-    super.key,
-    required this.player,
-  });
+  const TracksSelector({super.key, required this.player});
 
   @override
   State<TracksSelector> createState() => _TracksSelectorState();
@@ -30,20 +24,18 @@ class _TracksSelectorState extends State<TracksSelector> {
     super.initState();
     track = widget.player.state.track;
     tracks = widget.player.state.tracks;
-    subscriptions.addAll(
-      [
-        widget.player.stream.track.listen((track) {
-          setState(() {
-            this.track = track;
-          });
-        }),
-        widget.player.stream.tracks.listen((tracks) {
-          setState(() {
-            this.tracks = tracks;
-          });
-        }),
-      ],
-    );
+    subscriptions.addAll([
+      widget.player.stream.track.listen((track) {
+        setState(() {
+          this.track = track;
+        });
+      }),
+      widget.player.stream.tracks.listen((tracks) {
+        setState(() {
+          this.tracks = tracks;
+        });
+      }),
+    ]);
   }
 
   @override
@@ -73,9 +65,7 @@ class _TracksSelectorState extends State<TracksSelector> {
                       padding: const EdgeInsets.all(8.0),
                       child: Text(
                         '${e.id} • ${e.title} • ${e.language}',
-                        style: const TextStyle(
-                          fontSize: 14.0,
-                        ),
+                        style: const TextStyle(fontSize: 14.0),
                       ),
                     ),
                   ),
@@ -103,9 +93,7 @@ class _TracksSelectorState extends State<TracksSelector> {
                       padding: const EdgeInsets.all(8.0),
                       child: Text(
                         '${e.id} • ${e.title} • ${e.language}',
-                        style: const TextStyle(
-                          fontSize: 14.0,
-                        ),
+                        style: const TextStyle(fontSize: 14.0),
                       ),
                     ),
                   ),
@@ -133,9 +121,7 @@ class _TracksSelectorState extends State<TracksSelector> {
                       padding: const EdgeInsets.all(8.0),
                       child: Text(
                         '${e.id} • ${e.title} • ${e.language}',
-                        style: const TextStyle(
-                          fontSize: 14.0,
-                        ),
+                        style: const TextStyle(fontSize: 14.0),
                       ),
                     ),
                   ),
@@ -156,10 +142,7 @@ class _TracksSelectorState extends State<TracksSelector> {
 
 class SeekBar extends StatefulWidget {
   final Player player;
-  const SeekBar({
-    super.key,
-    required this.player,
-  });
+  const SeekBar({super.key, required this.player});
 
   @override
   State<SeekBar> createState() => _SeekBarState();
@@ -182,35 +165,33 @@ class _SeekBarState extends State<SeekBar> {
     position = widget.player.state.position;
     duration = widget.player.state.duration;
     buffer = widget.player.state.buffer;
-    subscriptions.addAll(
-      [
-        widget.player.stream.playing.listen((event) {
-          setState(() {
-            playing = event;
-          });
-        }),
-        widget.player.stream.completed.listen((event) {
-          setState(() {
-            position = Duration.zero;
-          });
-        }),
-        widget.player.stream.position.listen((event) {
-          setState(() {
-            if (!seeking) position = event;
-          });
-        }),
-        widget.player.stream.duration.listen((event) {
-          setState(() {
-            duration = event;
-          });
-        }),
-        widget.player.stream.buffer.listen((event) {
-          setState(() {
-            buffer = event;
-          });
-        }),
-      ],
-    );
+    subscriptions.addAll([
+      widget.player.stream.playing.listen((event) {
+        setState(() {
+          playing = event;
+        });
+      }),
+      widget.player.stream.completed.listen((event) {
+        setState(() {
+          position = Duration.zero;
+        });
+      }),
+      widget.player.stream.position.listen((event) {
+        setState(() {
+          if (!seeking) position = event;
+        });
+      }),
+      widget.player.stream.duration.listen((event) {
+        setState(() {
+          duration = event;
+        });
+      }),
+      widget.player.stream.buffer.listen((event) {
+        setState(() {
+          buffer = event;
+        });
+      }),
+    ]);
   }
 
   @override
@@ -232,9 +213,7 @@ class _SeekBarState extends State<SeekBar> {
             const SizedBox(width: 48.0),
             IconButton(
               onPressed: widget.player.playOrPause,
-              icon: Icon(
-                playing ? Icons.pause : Icons.play_arrow,
-              ),
+              icon: Icon(playing ? Icons.pause : Icons.play_arrow),
               color: Theme.of(context).primaryColor,
               iconSize: 36.0,
             ),
@@ -245,13 +224,13 @@ class _SeekBarState extends State<SeekBar> {
                 min: 0.0,
                 max: duration.inMilliseconds.toDouble(),
                 value: position.inMilliseconds.toDouble().clamp(
-                      0.0,
-                      duration.inMilliseconds.toDouble(),
-                    ),
+                  0.0,
+                  duration.inMilliseconds.toDouble(),
+                ),
                 secondaryTrackValue: buffer.inMilliseconds.toDouble().clamp(
-                      0.0,
-                      duration.inMilliseconds.toDouble(),
-                    ),
+                  0.0,
+                  duration.inMilliseconds.toDouble(),
+                ),
                 onChangeStart: (e) {
                   seeking = true;
                 },
@@ -271,24 +250,17 @@ class _SeekBarState extends State<SeekBar> {
             Text(duration.toString().substring(2, 7)),
             const SizedBox(width: 48.0),
           ],
-        )
+        ),
       ],
     );
   }
 }
 
 Future<void> showFilePicker(BuildContext context, Player player) async {
-  final result = await FilePicker.pickFiles(
-    type: FileType.any,
-    withData: kIsWeb,
-  );
-  if (result?.files.isNotEmpty ?? false) {
-    final file = result!.files.first;
-    if (kIsWeb) {
-      await player.open(Media(convertBytesToURL(file.bytes!)));
-    } else {
-      await player.open(Media(file.path!));
-    }
+  final result = await FilePicker.pickFile(type: FileType.any);
+  if (result != null) {
+    final file = result;
+    await player.open(Media(file.path!));
   }
 }
 

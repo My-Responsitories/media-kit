@@ -3,6 +3,7 @@
 /// Copyright © 2021 & onwards, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
 /// All rights reserved.
 /// Use of this source code is governed by MIT license that can be found in the LICENSE file.
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
@@ -19,25 +20,10 @@ import 'package:media_kit/src/values.dart';
 /// Initializes [Pointer<mpv_handle>] & notifies about events through the supplied callback.
 ///
 /// {@endtemplate}
-class Initializer {
-  /// Singleton instance.
-  static Initializer? _instance;
-
-  /// {@macro initializer}
-  Initializer._(this.mpv);
-
-  /// {@macro initializer}
-  factory Initializer(generated.MPV mpv) {
-    _instance ??= Initializer._(mpv);
-    return _instance!;
-  }
-
-  /// Generated libmpv C API bindings.
-  final generated.MPV mpv;
-
+abstract final class Initializer {
   /// Creates [Pointer<mpv_handle>].
-  Future<Pointer<generated.mpv_handle>> create(
-    Future<void> Function(Pointer<generated.mpv_event>) callback, {
+  static Future<Pointer<generated.mpv_handle>> create(
+    FutureOr<void> Function(Pointer<generated.mpv_event>) callback, {
     Map<String, String> options = const {},
   }) async {
     // Hot-restart tears down the Dart isolate, which invalidates any previously
@@ -47,29 +33,29 @@ class Initializer {
     // See: https://github.com/media-kit/media-kit/issues/1340
     // We still use NativeCallable based implementation in release mode and unit tests for better performance.
     if (kDebugMode && isMainIsolate()) {
-      return InitializerIsolate().create(callback, options: options);
+      return InitializerIsolate.create(callback, options: options);
     }
     if (!isExecmemRestricted) {
-      return InitializerNativeCallable(mpv).create(callback, options: options);
+      return InitializerNativeCallable.create(callback, options: options);
     } else {
-      return InitializerIsolate().create(callback, options: options);
+      return InitializerIsolate.create(callback, options: options);
     }
   }
 
   /// Disposes [Pointer<mpv_handle>].
-  void dispose(Pointer<generated.mpv_handle> ctx) {
+  static void dispose(Pointer<generated.mpv_handle> ctx) {
     if (kDebugMode && isMainIsolate()) {
-      InitializerIsolate().dispose(mpv, ctx);
+      InitializerIsolate.dispose(ctx);
       return;
     }
     if (!isExecmemRestricted) {
-      InitializerNativeCallable(mpv).dispose(ctx);
+      InitializerNativeCallable.dispose(ctx);
     } else {
-      InitializerIsolate().dispose(mpv, ctx);
+      InitializerIsolate.dispose(ctx);
     }
   }
 
-  bool isMainIsolate() {
+  static bool isMainIsolate() {
     final name = Isolate.current.debugName;
     return name == 'main';
   }
