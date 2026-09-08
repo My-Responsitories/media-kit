@@ -17,6 +17,7 @@ workspace:
   - media_kit
   - media_kit_test
   - media_kit_video
+  - media_kit_native_event_loop
   - video_player_media_kit
 
 dev_dependencies:

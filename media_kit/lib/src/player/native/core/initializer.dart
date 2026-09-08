@@ -11,6 +11,7 @@ import 'package:media_kit/generated/libmpv/bindings.dart' as generated;
 import 'package:media_kit/src/player/native/core/execmem_restriction.dart';
 import 'package:media_kit/src/player/native/core/initializer_isolate.dart';
 import 'package:media_kit/src/player/native/core/initializer_native_callable.dart';
+import 'package:media_kit/src/player/native/core/initializer_native_event_loop.dart';
 import 'package:media_kit/src/values.dart';
 
 /// {@template initializer}
@@ -22,10 +23,10 @@ import 'package:media_kit/src/values.dart';
 /// {@endtemplate}
 abstract final class Initializer {
   /// Creates [Pointer<mpv_handle>].
-  static Future<Pointer<generated.mpv_handle>> create(
+  static FutureOr<Pointer<generated.mpv_handle>> create(
     FutureOr<void> Function(Pointer<generated.mpv_event>) callback, {
     Map<String, String> options = const {},
-  }) async {
+  }) {
     // Hot-restart tears down the Dart isolate, which invalidates any previously
     // registered `NativeCallable` trampolines. In debug mode, prefer the isolate
     // based implementation to avoid native -> Dart callbacks that can outlive
@@ -35,11 +36,14 @@ abstract final class Initializer {
     if (kDebugMode && isMainIsolate()) {
       return InitializerIsolate.create(callback, options: options);
     }
-    if (!isExecmemRestricted) {
-      return InitializerNativeCallable.create(callback, options: options);
-    } else {
-      return InitializerIsolate.create(callback, options: options);
+    try {
+      return InitializerNativeEventLoop.create(callback, options: options);
+    } catch (_) {
+      if (!isExecmemRestricted) {
+        return InitializerNativeCallable.create(callback, options: options);
+      }
     }
+    return InitializerIsolate.create(callback, options: options);
   }
 
   /// Disposes [Pointer<mpv_handle>].
@@ -48,7 +52,9 @@ abstract final class Initializer {
       InitializerIsolate.dispose(ctx);
       return;
     }
-    if (!isExecmemRestricted) {
+    if (InitializerNativeEventLoop.inited) {
+      InitializerNativeEventLoop.dispose(ctx);
+    } else if (!isExecmemRestricted) {
       InitializerNativeCallable.dispose(ctx);
     } else {
       InitializerIsolate.dispose(ctx);

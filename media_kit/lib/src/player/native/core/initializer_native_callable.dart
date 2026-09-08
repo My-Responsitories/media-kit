@@ -20,10 +20,10 @@ import 'package:synchronized/synchronized.dart';
 /// {@endtemplate}
 abstract final class InitializerNativeCallable {
   /// Creates [Pointer<mpv_handle>].
-  static Future<Pointer<generated.mpv_handle>> create(
+  static Pointer<generated.mpv_handle> create(
     FutureOr<void> Function(Pointer<generated.mpv_event>) callback, {
     Map<String, String> options = const {},
-  }) async {
+  }) {
     final ctx = NativePlayer.mpv.mpv_create();
     for (final entry in options.entries) {
       NativePlayer.mpv.setOption(ctx, entry.key, entry.value);
