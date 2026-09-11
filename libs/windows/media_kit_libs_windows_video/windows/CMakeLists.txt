@@ -71,15 +71,15 @@ string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" LIBMPV_TARGET_PROCESSOR)
 string(TOLOWER "${CMAKE_GENERATOR_PLATFORM}" LIBMPV_GENERATOR_PLATFORM)
 
 if(LIBMPV_TARGET_PROCESSOR MATCHES "^(arm64|aarch64)$" OR LIBMPV_GENERATOR_PLATFORM MATCHES "^(arm64|aarch64)$")
-  set(LIBMPV "mpv-dev-aarch64-20260811-git-ad59ff1.zip")
-  set(LIBMPV_SHA256 "1b0d58db5bc1b24437d63120ae6e1b0d887ec504e53523dc4666893d00e7f4e8")
+  set(LIBMPV "mpv-dev-aarch64-20260911-git-41f6a64.zip")
+  set(LIBMPV_SHA256 "3f1dcaa0b8788f06bf14d1e0e9672c2e3b4e25a3d8c92eb1514349ba41ea040f")
 else()
-  set(LIBMPV "mpv-dev-x86_64-20260811-git-ad59ff1.7z")
-  set(LIBMPV_SHA256 "0161ad026f9ebd418a9b660c8e8c569f7959b5bb8e5f4a63e462ffc73327d4d8")
+  set(LIBMPV "mpv-dev-x86_64-v3-20260911-git-41f6a64.7z")
+  set(LIBMPV_SHA256 "367d978571cdfcdcf9f4beac658782f09e42f3eacd31bcd050be3e1bb472d90f")
 endif()
 
 # Download URL of the libmpv archive.
-set(LIBMPV_URL "https://github.com/Predidit/libmpv-win32-video-cmake/releases/download/20260811/${LIBMPV}")
+set(LIBMPV_URL "https://github.com/My-Responsitories/libmpv-win32-video-cmake/releases/download/20260911/${LIBMPV}")
 
 # Download location of the libmpv archive.
 set(LIBMPV_ARCHIVE "${CMAKE_BINARY_DIR}/${LIBMPV}")
