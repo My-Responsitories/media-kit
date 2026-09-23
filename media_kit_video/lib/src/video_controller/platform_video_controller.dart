@@ -32,8 +32,8 @@ abstract class PlatformVideoController {
   /// Texture ID of the video output, registered with Flutter engine by the native implementation.
   final ValueNotifier<int?> id = ValueNotifier<int?>(null);
 
-  /// [Rect] of the video output, received from the native implementation.
-  final ValueNotifier<Rect?> rect = ValueNotifier<Rect?>(null);
+  /// real size of the video output, received from the native implementation.
+  final ValueNotifier<(int, int)?> size = ValueNotifier<(int, int)?>(null);
 
   /// {@macro platform_video_controller}
   PlatformVideoController(this.player, this.configuration);
@@ -55,7 +55,7 @@ abstract class PlatformVideoController {
   @protected
   final waitUntilFirstFrameRenderedCompleter = Completer<void>();
 
-  static Future<PlatformVideoController> create(
+  static FutureOr<PlatformVideoController> create(
     Player player, {
     VideoControllerConfiguration configuration =
         const VideoControllerConfiguration(),
@@ -71,7 +71,7 @@ abstract class PlatformVideoController {
 
   void dispose() {
     id.dispose();
-    rect.dispose();
+    size.dispose();
   }
 }
 

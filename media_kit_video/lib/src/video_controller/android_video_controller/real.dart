@@ -3,12 +3,13 @@
 /// Copyright © 2021 & onwards, Hitesh Kumar Saini <saini123hitesh@gmail.com>.
 /// All rights reserved.
 /// Use of this source code is governed by MIT license that can be found in the LICENSE file.
-import 'dart:io';
 import 'dart:async';
 import 'dart:collection';
-import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
-import 'package:synchronized/synchronized.dart';
+import 'dart:io';
+
+import 'package:flutter/widgets.dart';
+import 'package:jni/jni.dart';
+import 'package:media_kit_video/src/utils/android/bindings.g.dart';
 
 import 'package:media_kit/media_kit.dart';
 
@@ -26,11 +27,13 @@ class AndroidVideoController extends PlatformVideoController {
   /// Whether [AndroidVideoController] is supported on the current platform or not.
   static bool get supported => Platform.isAndroid;
 
-  /// Pointer address to the global object reference of `android.view.Surface` i.e. `(intptr_t)(*android.view.Surface)`.
-  final ValueNotifier<int?> wid = ValueNotifier<int?>(null);
+  late final VideoOutput videoOutput;
 
-  /// [Lock] used to synchronize [onLoadHooks], [onUnloadHooks] & [subscription].
-  final lock = Lock();
+  /// Holds a JNI global reference to the current `android.view.Surface`.
+  JObject? _surface;
+
+  /// [StreamSubscription] for listening to video [VideoParams].
+  late final StreamSubscription<VideoParams> videoParamsSubscription;
 
   void setProperties(Map<String, String> properties) {
     for (final entry in properties.entries) {
@@ -38,109 +41,52 @@ class AndroidVideoController extends PlatformVideoController {
     }
   }
 
-  /// Listener for updating the --wid property.
-  Future<void> widListener() {
-    return lock.synchronized(() async {
-      final width = rect.value?.width.toInt() ?? 1;
-      final height = rect.value?.height.toInt() ?? 1;
-      final androidSurfaceSizeValue = '${width}x$height';
-      final widValue = wid.value?.toString() ?? '0';
-      // When --wid is 0, vo=null is required to avoid SIGSEGV.
-      final voValue = widValue == '0' ? 'null' : configuration.vo ?? 'gpu';
-      final vidValue = widValue == '0' ? 'no' : 'auto';
-      // It is important to re-initialize --vo after --android-surface-size.
+  /// Called synchronously by Java on the Flutter UI isolate (Android main
+  /// thread). By the time [VideoOutputManager.create] / [VideoOutputManager.setSurfaceSize]
+  /// returns, [wid] is guaranteed to have been updated.
+  void _onTextureUpdate(
+    int textureId,
+    JObject? surface,
+    int width,
+    int height,
+  ) {
+    debugPrint(
+      'media-kit: _onTextureUpdate(textureId=$textureId, surface=$surface, width=$width, height=$height)',
+    );
+    if (surface != null) {
       player.setProperty('vo', 'null');
-      setProperties(
-        {
-          // ORDER IS IMPORTANT.
-          'android-surface-size': androidSurfaceSizeValue,
-          'wid': widValue,
-          'vo': voValue,
-          // It is important to re-initialize --vid in-case of --vo=mediacodec_embed.
-          // Not doing so causes error "Could not open codec." & video never gets rendered.
-          if (configuration.vo == 'mediacodec_embed') 'vid': vidValue,
-        },
-      );
-      // Instead of seeking to the start (Duration.zero), seek to the current playback position
-      // without jumping the user to the start of the media.
-      final currentPosition = player.state.position;
-      await player.seek(currentPosition);
-    });
-  }
+      setProperties({
+        // ORDER IS IMPORTANT.
+        'android-surface-size': '${width}x$height',
+        // ignore: invalid_use_of_internal_member
+        'wid': surface.reference.pointer.address.toString(),
+        // When --wid is 0, vo=null is required to avoid SIGSEGV.
+        'vo': configuration.vo ?? 'gpu',
+        // It is important to re-initialize --vid in-case of --vo=mediacodec_embed after --android-surface-size.
+        // Not doing so causes error "Could not open codec." & video never gets rendered.
+        if (configuration.vo == 'mediacodec_embed') 'vid': 'auto',
+      });
+      _surface?.release();
+      _surface = surface;
+    } else {
+      _surface?.release();
+      _surface = null;
+      setProperties({
+        'vo': 'null',
+        'wid': '0',
+        if (configuration.vo == 'mediacodec_embed') 'vid': 'no',
+      });
+    }
 
-  /// [StreamSubscription] for listening to video [Rect].
-  StreamSubscription<VideoParams>? videoParamsSubscription;
+    id.value = textureId;
+    size.value = (width, height);
+  }
 
   /// {@macro android_video_controller}
   AndroidVideoController._(super.player, super.configuration) {
-    wid.addListener(widListener);
-    videoParamsSubscription = player.stream.videoParams.listen(
-      (event) => lock.synchronized(() async {
-        final int width;
-        final int height;
-        if (event.rotate == 0 || event.rotate == 180) {
-          width = event.dw ?? 0;
-          height = event.dh ?? 0;
-        } else {
-          // width & height are swapped for 90 or 270 degrees rotation.
-          width = event.dh ?? 0;
-          height = event.dw ?? 0;
-        }
-
-        final isZero = width == 0 || height == 0;
-        final isSame = width == rect.value?.width.toInt() &&
-            height == rect.value?.height.toInt();
-        if (isZero || isSame) return;
-
-        await _channel.invokeMethod('VideoOutputManager.SetSurfaceSize', {
-          'handle': player.handle.toString(),
-          'width': width.toString(),
-          'height': height.toString(),
-        });
-
-        rect.value = Rect.fromLTRB(
-          0.0,
-          0.0,
-          width.toDouble(),
-          height.toDouble(),
-        );
-
-        if (!waitUntilFirstFrameRenderedCompleter.isCompleted) {
-          waitUntilFirstFrameRenderedCompleter.complete();
-        }
-      }),
-    );
-  }
-
-  /// {@macro android_video_controller}
-  static Future<PlatformVideoController> create(
-    Player player,
-    VideoControllerConfiguration configuration,
-  ) async {
-    // Retrieve the native handle of the [Player].
-    final handle = player.handle;
-    // Return the existing [VideoController] if it's already created.
-    if (_controllers.containsKey(handle)) {
-      return _controllers[handle]!;
-    }
-
-    // Creation:
-    final controller = AndroidVideoController._(player, configuration);
-
-    // Register [_dispose] for execution upon [Player.dispose].
-    player.release.add(controller.dispose);
-
-    // Store the [VideoController] in the [_controllers].
-    _controllers[handle] = controller;
-
-    await _channel.invokeMethod('VideoOutputManager.Create', {
-      'handle': handle.toString(),
-    });
-
-    controller.setProperties({
-      // It is necessary to set vo=null here to avoid SIGSEGV, --wid must be assigned before vo=gpu is set.
-      'vo': 'null',
-      'hwdec': configuration.hwdec ??
+    setProperties({
+      'hwdec':
+          configuration.hwdec ??
           (configuration.enableHardwareAcceleration ? 'auto-safe' : 'no'),
       'vid': 'auto',
       'opengl-es': 'yes',
@@ -152,7 +98,64 @@ class AndroidVideoController extends PlatformVideoController {
       'hwdec-codecs': 'h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1',
     });
 
-    // Return the [PlatformVideoController].
+    // Register the Java callback *before* creating the native output.
+    // `onTextureUpdate$async` is left at its default (`false`), i.e. the
+    // callback runs synchronously on the calling thread - which is exactly
+    // what we want here.
+    final callback = TextureUpdateCallback.implement(
+      $TextureUpdateCallback(onTextureUpdate: _onTextureUpdate),
+    );
+
+    videoOutput = VideoOutput(callback);
+    callback.release();
+
+    videoParamsSubscription = player.stream.videoParams.listen((event) {
+      final int width, height;
+      if (event.rotate == 0 || event.rotate == 180) {
+        width = event.dw ?? 0;
+        height = event.dh ?? 0;
+      } else {
+        // width & height are swapped for 90 or 270 degrees rotation.
+        width = event.dh ?? 0;
+        height = event.dw ?? 0;
+      }
+
+      late final size = this.size.value;
+      if (width == 0 ||
+          height == 0 ||
+          (size != null && width == size.$1 && height == size.$2)) {
+        return;
+      }
+
+      videoOutput.setSurfaceSize(width, height);
+
+      if (!waitUntilFirstFrameRenderedCompleter.isCompleted) {
+        waitUntilFirstFrameRenderedCompleter.complete();
+      }
+    });
+  }
+
+  /// {@macro android_video_controller}
+  static FutureOr<PlatformVideoController> create(
+    Player player,
+    VideoControllerConfiguration configuration,
+  ) {
+    // Retrieve the native handle of the [Player].
+    final handle = player.handle;
+    // Return the existing [VideoController] if it's already created.
+    if (_controllers[handle] case final ctr?) {
+      return ctr;
+    }
+
+    // Creation:
+    final controller = AndroidVideoController._(player, configuration);
+
+    // Register [_dispose] for execution upon [Player.dispose].
+    player.release.add(controller.dispose);
+
+    // Store the [VideoController] in the [_controllers].
+    _controllers[handle] = controller;
+
     return controller;
   }
 
@@ -173,45 +176,16 @@ class AndroidVideoController extends PlatformVideoController {
   @override
   Future<void> dispose() async {
     super.dispose();
-    wid.removeListener(widListener);
-    wid.dispose();
-    await videoParamsSubscription?.cancel();
+    await videoParamsSubscription.cancel();
     final handle = player.handle;
     _controllers.remove(handle);
-    await _channel.invokeMethod('VideoOutputManager.Dispose', {
-      'handle': handle.toString(),
-    });
+
+    videoOutput.dispose();
+
+    _surface?.release();
+    _surface = null;
   }
 
   /// Currently created [AndroidVideoController]s.
   static final _controllers = HashMap<int, AndroidVideoController>();
-
-  /// [MethodChannel] for invoking platform specific native implementation.
-  static final _channel =
-      const MethodChannel('com.alexmercerind/media_kit_video')
-        ..setMethodCallHandler((MethodCall call) {
-          assert(call.method == 'VideoOutput.Resize');
-          try {
-            final Map args = call.arguments;
-            debugPrint(call.method);
-            debugPrint(args.toString());
-            // Notify about updated texture ID & [Rect].
-            final ctr = _controllers[call.arguments['handle'] as int];
-            if (ctr != null) {
-              final Map rectArgs = args['rect'];
-              final Rect rect = Rect.fromLTWH(
-                (rectArgs['left'] as num).toDouble(),
-                (rectArgs['top'] as num).toDouble(),
-                (rectArgs['width'] as num).toDouble(),
-                (rectArgs['height'] as num).toDouble(),
-              );
-              ctr.rect.value = rect;
-              ctr.id.value = call.arguments['id'] as int;
-              ctr.wid.value = call.arguments['wid'] as int;
-            }
-          } catch (error, stackTrace) {
-            Zone.current.handleUncaughtError(error, stackTrace);
-          }
-          return Future.value();
-        });
 }

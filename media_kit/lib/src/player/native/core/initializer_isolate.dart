@@ -56,21 +56,17 @@ abstract final class InitializerIsolate {
     final handle = await completer.future;
 
     // Save the references.
-    _ports[handle] = port;
-    _isolates[handle] = isolate;
+    _isolates[handle] = (port, isolate);
 
     return Pointer.fromAddress(handle);
   }
 
   /// Disposes [Pointer<mpv_handle>].
   static void dispose(Pointer<generated.mpv_handle> handle) {
-    final port = _ports[handle.address];
-    final isolate = _isolates[handle.address];
-    if (port != null && isolate != null) {
+    final portIsolate = _isolates.remove(handle.address);
+    if (portIsolate != null) {
+      final (port, isolate) = portIsolate;
       port.send(null);
-
-      _ports.remove(handle.address);
-      _isolates.remove(handle.address);
 
       NativePlayer.mpv.mpv_wakeup(handle);
 
@@ -137,6 +133,5 @@ abstract final class InitializerIsolate {
     receiver.close();
   }
 
-  static final _ports = HashMap<int, SendPort>();
-  static final _isolates = HashMap<int, Isolate>();
+  static final _isolates = HashMap<int, (SendPort, Isolate)>();
 }
