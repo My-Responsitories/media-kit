@@ -39,19 +39,14 @@ class AndroidVideoController extends PlatformVideoController {
     }
   }
 
-  /// Called synchronously by Java on the Flutter UI isolate (Android main
-  /// thread). By the time [VideoOutputManager.create] / [VideoOutputManager.setSurfaceSize]
-  /// returns, [wid] is guaranteed to have been updated.
-  void _onTextureUpdate(
-    int textureId,
-    JObject? surface,
-    int width,
-    int height,
-  ) {
+  int _w = 1;
+  int _h = 1;
+  void _postFrameCallback(_) {
     player.setProperty('vo', 'null');
+    final surface = _surface;
     setProperties({
       // ORDER IS IMPORTANT.
-      'android-surface-size': '${width}x$height',
+      'android-surface-size': '${_w}x$_h',
       'wid': surface == null
           ? '0'
           // ignore: invalid_use_of_internal_member
@@ -63,6 +58,20 @@ class AndroidVideoController extends PlatformVideoController {
       if (configuration.vo == 'mediacodec_embed')
         'vid': surface == null ? 'no' : 'auto',
     });
+    rect.value = Rect.fromLTWH(0.0, 0.0, _w.toDouble(), _h.toDouble());
+  }
+
+  /// Called synchronously by Java on the Flutter UI isolate (Android main
+  /// thread). By the time [VideoOutputManager.create] / [VideoOutputManager.setSurfaceSize]
+  /// returns, [wid] is guaranteed to have been updated.
+  void _onTextureUpdate(
+    int textureId,
+    JObject? surface,
+    int width,
+    int height,
+  ) {
+    _w = width;
+    _h = height;
 
     if (surface != null) {
       _surface?.release();
@@ -71,9 +80,8 @@ class AndroidVideoController extends PlatformVideoController {
       _surface?.release();
       _surface = null;
     }
-
+    WidgetsBinding.instance.addPostFrameCallback(_postFrameCallback);
     id.value = textureId;
-    rect.value = Rect.fromLTWH(0.0, 0.0, width.toDouble(), height.toDouble());
   }
 
   /// {@macro android_video_controller}
