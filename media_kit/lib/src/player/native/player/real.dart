@@ -109,6 +109,7 @@ class NativePlayer extends PlatformPlayer {
     );
 
     disposed = true;
+    Zone.current.handleUncaughtError('debug: player disposed called', StackTrace.current);
 
     await super.dispose();
 

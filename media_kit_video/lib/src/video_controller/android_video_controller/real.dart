@@ -41,7 +41,7 @@ class AndroidVideoController extends PlatformVideoController {
 
   int _w = 1;
   int _h = 1;
-  void _postFrameCallback(_) {
+  void _postFrameCallback() {
     player.setProperty('vo', 'null');
     final surface = _surface;
     setProperties({
@@ -80,7 +80,7 @@ class AndroidVideoController extends PlatformVideoController {
       _surface?.release();
       _surface = null;
     }
-    WidgetsBinding.instance.addPostFrameCallback(_postFrameCallback);
+    Timer(const Duration(seconds: 1), _postFrameCallback);
     id.value = textureId;
   }
 
