@@ -54,8 +54,8 @@ class NativeVideoController extends PlatformVideoController {
 
   /// {@macro native_video_controller}
   NativeVideoController._(super.player, super.configuration)
-      : width = configuration.width,
-        height = configuration.height {
+    : width = configuration.width,
+      height = configuration.height {
     videoParamsSubscription = player.stream.videoParams.listen(
       (event) => lock.synchronized(() {
         final w = event.dw;
@@ -99,8 +99,8 @@ class NativeVideoController extends PlatformVideoController {
     // Retrieve the native handle of the [Player].
     final handle = player.handle;
     // Return the existing [VideoController] if it's already created.
-    if (_controllers.containsKey(handle)) {
-      return _controllers[handle]!;
+    if (_controllers[handle] case final ctr?) {
+      return ctr;
     }
 
     // Creation:
@@ -166,25 +166,19 @@ class NativeVideoController extends PlatformVideoController {
     if (width != null && height != null) {
       this.width = width;
       this.height = height;
-      return _channel.invokeMethod(
-        'VideoOutputManager.SetSize',
-        {
-          'handle': handle.toString(),
-          'width': width.toString(),
-          'height': height.toString(),
-        },
-      );
+      return _channel.invokeMethod('VideoOutputManager.SetSize', {
+        'handle': handle.toString(),
+        'width': width.toString(),
+        'height': height.toString(),
+      });
     } else {
       this.width = null;
       this.height = null;
-      return _channel.invokeMethod(
-        'VideoOutputManager.SetSize',
-        {
-          'handle': handle.toString(),
-          'width': videoParamsWidth?.toString() ?? 'null',
-          'height': videoParamsHeight?.toString() ?? 'null',
-        },
-      );
+      return _channel.invokeMethod('VideoOutputManager.SetSize', {
+        'handle': handle.toString(),
+        'width': videoParamsWidth?.toString() ?? 'null',
+        'height': videoParamsHeight?.toString() ?? 'null',
+      });
     }
   }
 
@@ -217,16 +211,14 @@ class NativeVideoController extends PlatformVideoController {
             final ctr = _controllers[args['handle'] as int];
             if (ctr != null) {
               final Map rectArgs = args['rect'];
-              final Rect rect = Rect.fromLTWH(
-                (rectArgs['left'] as num).toDouble(),
-                (rectArgs['top'] as num).toDouble(),
-                (rectArgs['width'] as num).toDouble(),
-                (rectArgs['height'] as num).toDouble(),
+              final size = (
+                (rectArgs['width'] as num).toInt(),
+                (rectArgs['height'] as num).toInt(),
               );
-              ctr.rect.value = rect;
+              ctr.size.value = size;
               ctr.id.value = args['id'] as int;
               // Notify about the first frame being rendered.
-              if (rect.width > 0 && rect.height > 0) {
+              if (size.$1 > 0 && size.$2 > 0) {
                 final completer = ctr.waitUntilFirstFrameRenderedCompleter;
                 if (!completer.isCompleted) completer.complete();
               }

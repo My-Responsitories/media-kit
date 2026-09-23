@@ -359,17 +359,17 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
                     child: ValueListenableBuilder<int?>(
                       valueListenable: widget.controller.id,
                       builder: (context, id, _) {
-                        return ValueListenableBuilder<Rect?>(
-                          valueListenable: widget.controller.rect,
+                        return ValueListenableBuilder(
+                          valueListenable: widget.controller.size,
                           builder: (context, rect, _) {
                             if (id != null && rect != null && _visible) {
                               return SizedBox(
                                 // Apply aspect ratio if provided.
                                 width: videoViewParameters.aspectRatio == null
-                                    ? rect.width
-                                    : rect.height *
-                                        videoViewParameters.aspectRatio!,
-                                height: rect.height,
+                                    ? rect.$1.toDouble()
+                                    : rect.$2 *
+                                          videoViewParameters.aspectRatio!,
+                                height: rect.$2.toDouble(),
                                 child: Stack(
                                   children: [
                                     const SizedBox(),
@@ -383,7 +383,7 @@ class VideoState extends State<Video> with WidgetsBindingObserver {
                                     // Keep the |Texture| hidden before the first frame renders. In native implementation, if no default frame size is passed (through VideoController), a starting 1 pixel sized texture/surface is created to initialize the render context & check for H/W support.
                                     // This is then resized based on the video dimensions & accordingly texture ID, texture, EGLDisplay, EGLSurface etc. (depending upon platform) are also changed. Just don't show that 1 pixel texture to the UI.
                                     // NOTE: Unmounting |Texture| causes the |MarkTextureFrameAvailable| to not do anything on GNU/Linux.
-                                    if (rect.width <= 1.0 && rect.height <= 1.0)
+                                    if (rect.$1 <= 1 && rect.$2 <= 1)
                                       Positioned.fill(
                                         child: Container(
                                           color: videoViewParameters.fill,
@@ -446,9 +446,7 @@ Future<void> defaultEnterNativeFullscreen() async {
       );
     } else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       await const MethodChannel('com.alexmercerind/media_kit_video')
-          .invokeMethod(
-        'Utils.EnterNativeFullscreen',
-      );
+          .invokeMethod('Utils.EnterNativeFullscreen');
     }
   } catch (exception, stacktrace) {
     debugPrint(exception.toString());
@@ -466,16 +464,12 @@ Future<void> defaultExitNativeFullscreen() async {
             SystemUiMode.manual,
             overlays: SystemUiOverlay.values,
           ),
-          SystemChrome.setPreferredOrientations(
-            [],
-          ),
+          SystemChrome.setPreferredOrientations([]),
         ],
       );
     } else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       await const MethodChannel('com.alexmercerind/media_kit_video')
-          .invokeMethod(
-        'Utils.ExitNativeFullscreen',
-      );
+          .invokeMethod('Utils.ExitNativeFullscreen');
     }
   } catch (exception, stacktrace) {
     debugPrint(exception.toString());

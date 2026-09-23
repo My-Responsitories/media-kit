@@ -40,7 +40,7 @@ class SimpleVideoState extends State<SimpleVideo> {
       if (_visible != visible) {
         _visible = visible;
         // ignore: invalid_use_of_visible_for_testing_member, invalid_use_of_protected_member
-        widget.controller.rect.notifyListeners();
+        widget.controller.size.notifyListeners();
       }
     });
   }
@@ -61,20 +61,21 @@ class SimpleVideoState extends State<SimpleVideo> {
   Widget build(BuildContext context) {
     final ctr = widget.controller;
     return ListenableBuilder(
-      listenable: Listenable.merge([ctr.id, ctr.rect]),
+      listenable: Listenable.merge([ctr.id, ctr.size]),
       builder: (context, _) {
         final id = ctr.id.value;
-        final rect = ctr.rect.value;
+        final rect = ctr.size.value;
         if (id != null && rect != null && _visible) {
+          final aspectRatio = widget.aspectRatio;
           return SizedBox(
-            width: widget.aspectRatio == null
-                ? rect.width / _devicePixelRatio
-                : rect.height / _devicePixelRatio * widget.aspectRatio!,
-            height: rect.height / _devicePixelRatio,
+            width: aspectRatio == null
+                ? rect.$1 / _devicePixelRatio
+                : rect.$2 / _devicePixelRatio * aspectRatio,
+            height: rect.$2 / _devicePixelRatio,
             child: Stack(
               children: [
                 Texture(textureId: id, filterQuality: widget.filterQuality),
-                if (rect.width <= 1.0 && rect.height <= 1.0)
+                if (rect.$1 <= 1 && rect.$2 <= 1)
                   Positioned.fill(child: ColoredBox(color: widget.fill)),
               ],
             ),
