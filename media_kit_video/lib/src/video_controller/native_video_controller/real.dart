@@ -126,7 +126,7 @@ class NativeVideoController extends PlatformVideoController {
     final completer = Completer<void>();
     void listener() {
       final value = controller.id.value;
-      if (value != null) {
+      if (value != 0) {
         debugPrint('NativeVideoController: Texture ID: $value');
         completer.complete();
       }

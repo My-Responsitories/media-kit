@@ -1598,39 +1598,33 @@ class NativePlayer extends PlatformPlayer {
       // Set --vid=no by default to prevent redundant video decoding.
       // [VideoController] internally sets --vid=auto upon attachment to enable video rendering & decoding.
       if (!test) 'vid': 'no',
+      if (Platform.isAndroid) 'vo': 'null',
       // Skip mpv's AVAudioSession management when the embedder owns the session. iOS-specific.
       if (Platform.isIOS && !configuration.iosManageAudioSession)
         'audiounit-skip-session-management': 'yes',
-      'prefetch-playlist': 'yes',
-      ...?configuration.options,
-    };
-
-    ctx = await Initializer.create(_handler, options: options);
-
-    // ALL:
-    //
-    // idle = yes
-    // pause = yes
-    // keep-open = yes
-    // audio-display = no
-    // network-timeout = 5
-    // scale=bilinear
-    // dscale=bilinear
-    // dither=no
-    // correct-downscaling=no
-    // linear-downscaling=no
-    // sigmoid-upscaling=no
-    // hdr-compute-peak=no
-    //
-    // ANDROID (Physical Device OR API Level > 25):
-    //
-    // ao = opensles
-    //
-    // ANDROID (Emulator AND API Level <= 25):
-    //
-    // ao = null
-    //
-    final properties = <String, String>{
+      // ALL:
+      //
+      // idle = yes
+      // pause = yes
+      // keep-open = yes
+      // audio-display = no
+      // network-timeout = 5
+      // scale=bilinear
+      // dscale=bilinear
+      // dither=no
+      // correct-downscaling=no
+      // linear-downscaling=no
+      // sigmoid-upscaling=no
+      // hdr-compute-peak=no
+      //
+      // ANDROID (Physical Device OR API Level > 25):
+      //
+      // ao = opensles
+      //
+      // ANDROID (Emulator AND API Level <= 25):
+      //
+      // ao = null
+      //
       'idle': 'yes',
       'pause': 'yes',
       'keep-open': 'yes',
@@ -1647,35 +1641,30 @@ class NativePlayer extends PlatformPlayer {
       'hdr-compute-peak': 'no',
       'subs-fallback': 'yes',
       'subs-with-matching-audio': 'yes',
-
+      'sub-ass': 'no',
+      'sub-visibility': 'no',
+      'secondary-sub-visibility': 'no',
       // Other properties based on [PlayerConfiguration].
       if (!configuration.osc) ...const {'osc': 'no', 'osd-level': '0'},
       'title': ?configuration.title,
-      'vo': ?configuration.vo,
       'demuxer-lavf-o': [
         'seg_max_retry=5',
         'strict=experimental',
         'allowed_extensions=ALL',
         'protocol_whitelist=[${configuration.protocolWhitelist.join(',')}]',
       ].join(','),
-      'sub-ass': 'no',
-      'sub-visibility': 'no',
-      'secondary-sub-visibility': 'no',
+      ...?configuration.options,
     };
 
     assert(() {
       if (test) {
-        properties['vo'] = 'null';
-        properties['ao'] = 'null';
+        options['vo'] = 'null';
+        options['ao'] = 'null';
       }
       return true;
     }());
 
-    await Future.wait(
-      properties.entries.map(
-        (entry) => _setPropertyString(entry.key, entry.value),
-      ),
-    );
+    ctx = await Initializer.create(_handler, options: options);
 
     // if (configuration.muted) {
     //   await _setPropertyDouble('volume', 0);

@@ -33,9 +33,9 @@ abstract final class Initializer {
     // the isolate and crash with "Callback invoked after it has been deleted".
     // See: https://github.com/media-kit/media-kit/issues/1340
     // We still use NativeCallable based implementation in release mode and unit tests for better performance.
-    if (kDebugMode && isMainIsolate()) {
-      return InitializerIsolate.create(callback, options: options);
-    }
+    // if (kDebugMode && isMainIsolate()) {
+    //   return InitializerIsolate.create(callback, options: options);
+    // }
     try {
       return InitializerNativeEventLoop.create(callback, options: options);
     } catch (_) {

@@ -11,47 +11,56 @@ import android.util.Log;
 
 import java.util.HashMap;
 import java.util.Locale;
-import java.util.Objects;
+import java.util.Map;
 
+import androidx.annotation.Keep;
+import androidx.annotation.NonNull;
 import io.flutter.view.TextureRegistry;
 
+@Keep
 public class VideoOutputManager {
     private static final String TAG = "VideoOutputManager";
 
-    private final HashMap<Long, VideoOutput> videoOutputs = new HashMap<>();
-    private final TextureRegistry textureRegistryReference;
-    private final Object lock = new Object();
+    private static final Map<Long, VideoOutput> outputs = new HashMap<>();
+    private static TextureRegistry textureRegistry;
 
-    VideoOutputManager(TextureRegistry textureRegistryReference) {
-        this.textureRegistryReference = textureRegistryReference;
+    /** Called from MediaKitVideoPlugin.onAttachedToEngine. */
+    static void initialize(@NonNull TextureRegistry registry) {
+        textureRegistry = registry;
     }
 
-    public void create(long handle, TextureUpdateCallback textureUpdateCallback) {
-        synchronized (lock) {
-            Log.i(TAG, String.format(Locale.ENGLISH, "com.alexmercerind.media_kit_video.VideoOutputManager.create: %d", handle));
-            if (!videoOutputs.containsKey(handle)) {
-                final VideoOutput videoOutput = new VideoOutput(textureRegistryReference, textureUpdateCallback);
-                videoOutputs.put(handle, videoOutput);
-            }
+    public static void create(long handle, @NonNull TextureUpdateCallback callback) {
+        if (textureRegistry == null) {
+            throw new IllegalStateException("TextureRegistry not initialized");
+        }
+        if (!outputs.containsKey(handle)) {
+            Log.i(TAG, String.format(Locale.ENGLISH, "create: %d", handle));
+            outputs.put(handle, new VideoOutput(textureRegistry, callback));
+        } else {
+            throw new IllegalStateException("VideoOutput initialized");
         }
     }
 
-    public void dispose(long handle) {
-        synchronized (lock) {
-            Log.i(TAG, String.format(Locale.ENGLISH, "com.alexmercerind.media_kit_video.VideoOutputManager.dispose: %d", handle));
-            if (videoOutputs.containsKey(handle)) {
-                Objects.requireNonNull(videoOutputs.get(handle)).dispose();
-                videoOutputs.remove(handle);
-            }
+    public static void setSurfaceSize(long handle, int width, int height) {
+        final VideoOutput output = outputs.get(handle);
+        if (output != null) {
+            output.setSurfaceSize(width, height);
         }
     }
 
-    public void setSurfaceSize(long handle, int width, int height) {
-        synchronized (lock) {
-            Log.i(TAG, String.format(Locale.ENGLISH, "com.alexmercerind.media_kit_video.VideoOutputManager.setSurfaceSize: %d %d %d", handle, width, height));
-            if (videoOutputs.containsKey(handle)) {
-                Objects.requireNonNull(videoOutputs.get(handle)).setSurfaceSize(width, height);
-            }
+    public static void dispose(long handle) {
+        final VideoOutput output = outputs.remove(handle);
+        if (output != null) {
+            Log.i(TAG, String.format(Locale.ENGLISH, "dispose: %d", handle));
+            output.dispose();
         }
+    }
+
+    static void disposeAll() {
+        for (final VideoOutput output : outputs.values()) {
+            output.dispose();
+        }
+        outputs.clear();
+        textureRegistry = null;
     }
 }

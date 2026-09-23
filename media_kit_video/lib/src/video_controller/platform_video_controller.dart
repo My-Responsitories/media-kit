@@ -30,7 +30,7 @@ abstract class PlatformVideoController {
   final VideoControllerConfiguration configuration;
 
   /// Texture ID of the video output, registered with Flutter engine by the native implementation.
-  final ValueNotifier<int?> id = ValueNotifier<int?>(null);
+  final ValueNotifier<int> id = ValueNotifier<int>(0);
 
   /// [Rect] of the video output, received from the native implementation.
   final ValueNotifier<Rect?> rect = ValueNotifier<Rect?>(null);
@@ -55,7 +55,7 @@ abstract class PlatformVideoController {
   @protected
   final waitUntilFirstFrameRenderedCompleter = Completer<void>();
 
-  static Future<PlatformVideoController> create(
+  static FutureOr<PlatformVideoController> create(
     Player player, {
     VideoControllerConfiguration configuration =
         const VideoControllerConfiguration(),

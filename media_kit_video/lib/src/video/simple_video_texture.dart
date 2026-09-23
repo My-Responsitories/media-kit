@@ -65,7 +65,7 @@ class SimpleVideoState extends State<SimpleVideo> {
       builder: (context, _) {
         final id = ctr.id.value;
         final rect = ctr.rect.value;
-        if (id != null && rect != null && _visible) {
+        if (id != 0 && rect != null && _visible) {
           return SizedBox(
             width: widget.aspectRatio == null
                 ? rect.width / _devicePixelRatio
