@@ -31,6 +31,7 @@ configure<com.android.build.api.dsl.LibraryExtension> {
     }
     defaultConfig {
         minSdk = 24
+        consumerProguardFiles("proguard-rules.pro")
     }
     testOptions {
         unitTests {

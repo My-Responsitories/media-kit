@@ -1,9 +1,7 @@
 package com.alexmercerind.media_kit_video;
 
-import androidx.annotation.Keep;
 import androidx.annotation.Nullable;
 
-@Keep
 public interface TextureUpdateCallback {
     /**
      * @param id      Flutter texture id
