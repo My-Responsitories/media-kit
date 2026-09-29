@@ -58,9 +58,9 @@ task downloadDependencies(type: Exec) {
 
         // Download all *.jar dependencies & verify their sha256 checksums.
         def filesToDownload = [
-            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260906/default-arm64-v8a.jar", "sha256": "98df6410375cc7a4be7e6eff56f9ccd88fa52678973cc23bcf7e934ab8c8682d", "destination": file("$buildDir/20260906/default-arm64-v8a.jar")],
-            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260906/default-armeabi-v7a.jar", "sha256": "75ba2199848cd6224817320ddfabb7d7ea48fb4cfb1721b0090043d5a8a38602", "destination": file("$buildDir/20260906/default-armeabi-v7a.jar")],
-            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260906/default-x86_64.jar", "sha256": "1caa6198de22808bd7f10fcff2923f5eb174cc42ef24569aeafb98c6597457a4", "destination": file("$buildDir/20260906/default-x86_64.jar")],
+            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260930/default-arm64-v8a.jar", "sha256": "f6e11847ae1b7f3c55706881067d34cd119b3ab96f320688dbafc896f14968b1", "destination": file("$buildDir/20260930/default-arm64-v8a.jar")],
+            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260930/default-armeabi-v7a.jar", "sha256": "5a4d42552aaf32967ec1e5dbfdd3ca335ef42bb6dcc631ca99f6827f528f22ab", "destination": file("$buildDir/20260930/default-armeabi-v7a.jar")],
+            ["url": "https://github.com/My-Responsitories/libmpv-android-video-build/releases/download/20260930/default-x86_64.jar", "sha256": "83a178be7505152d0627137c9f03a632d217b3eb63b0eef07e4f1b49931cfa83", "destination": file("$buildDir/20260930/default-x86_64.jar")],
         ]
 
         filesToDownload.each { fileInfo ->
