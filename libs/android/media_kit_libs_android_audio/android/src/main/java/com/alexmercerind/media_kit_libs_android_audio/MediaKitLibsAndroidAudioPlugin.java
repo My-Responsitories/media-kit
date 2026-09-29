@@ -23,8 +23,6 @@ import android.content.res.AssetManager;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 
-import com.alexmercerind.mediakitandroidhelper.MediaKitAndroidHelper;
-
 
 /** MediaKitLibsAndroidAudioPlugin */
 public class MediaKitLibsAndroidAudioPlugin implements FlutterPlugin {
@@ -39,18 +37,11 @@ public class MediaKitLibsAndroidAudioPlugin implements FlutterPlugin {
 
     @Override
     public void onAttachedToEngine(@NonNull FlutterPluginBinding flutterPluginBinding) {
-        Log.i("media_kit", "package:media_kit_libs_android_audio attached.");
-        try {
-            // Save android.content.Context for access later within MediaKitAndroidHelpers e.g. loading bundled assets.
-            MediaKitAndroidHelper.setApplicationContextJava(flutterPluginBinding.getApplicationContext());
-            Log.i("media_kit", "Saved application context.");
-        } catch (Throwable e) {
-            e.printStackTrace();
-        }
+        Log.d("media_kit", "package:media_kit_libs_android_audio attached.");
     }
 
     @Override
     public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
-        Log.i("media_kit", "package:media_kit_libs_android_audio attached.");
+        Log.d("media_kit", "package:media_kit_libs_android_audio attached.");
     }
 }
