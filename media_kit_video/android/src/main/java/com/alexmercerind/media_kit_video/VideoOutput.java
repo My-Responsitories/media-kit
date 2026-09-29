@@ -8,23 +8,16 @@
 package com.alexmercerind.media_kit_video;
 
 import android.util.Log;
-
-import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import io.flutter.view.TextureRegistry;
 
-@Keep
 public class VideoOutput implements TextureRegistry.SurfaceProducer.Callback {
     private static final String TAG = "VideoOutput";
     private static TextureRegistry textureRegistry;
 
     private final TextureUpdateCallback callback;
     private final TextureRegistry.SurfaceProducer producer;
-
-    static void setTextureRegistry(@Nullable TextureRegistry registry) {
-        textureRegistry = registry;
-    }
 
     public VideoOutput(@NonNull TextureUpdateCallback callback) {
         if (textureRegistry == null) {
@@ -33,6 +26,10 @@ public class VideoOutput implements TextureRegistry.SurfaceProducer.Callback {
         this.callback = callback;
         producer = textureRegistry.createSurfaceProducer();
         producer.setCallback(this);
+    }
+
+    static void setTextureRegistry(@Nullable TextureRegistry registry) {
+        textureRegistry = registry;
     }
 
     public void dispose() {
