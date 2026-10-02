@@ -54,9 +54,11 @@ VideoOutput::VideoOutput(int64_t handle,
             d3d11_renderer_->swap_chain()
         };
 
+        int advanced_control = 1;
         mpv_render_param params[] = {
             {MPV_RENDER_PARAM_API_TYPE, MPV_RENDER_API_TYPE_DXGI},
             {MPV_RENDER_PARAM_DXGI_INIT_PARAMS, &init_params},
+            {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced_control},
             {MPV_RENDER_PARAM_INVALID, nullptr},
         };
 
@@ -164,9 +166,12 @@ void VideoOutput::Render() {
   if (texture_id_) {
     // H/W
     if (d3d11_renderer_ != nullptr) {
-      mpv_render_context_render(render_context_, nullptr);
-      mpv_render_context_report_swap(render_context_);
-      d3d11_renderer_->ProducerCommit();
+      uint64_t flags = mpv_render_context_update(render_context_);
+      if (flags & MPV_RENDER_UPDATE_FRAME) {
+          mpv_render_context_render(render_context_, nullptr);
+          mpv_render_context_report_swap(render_context_);
+          d3d11_renderer_->ProducerCommit();
+      }
     }
     // S/W
     if (pixel_buffer_ != nullptr) {
