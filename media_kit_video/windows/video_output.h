@@ -25,6 +25,11 @@
 #include "d3d11_renderer.h"
 #include "thread_pool.h"
 
+typedef struct VideoDimensions {
+  int64_t width = 0;
+  int64_t height = 0;
+} VideoDimensions;
+
 typedef struct _VideoOutputConfiguration {
   std::optional<int64_t> width;
   std::optional<int64_t> height;
@@ -85,9 +90,7 @@ class VideoOutput {
 
   void Resize(int64_t required_width, int64_t required_height);
 
-  int64_t GetVideoWidth();
-
-  int64_t GetVideoHeight();
+  VideoDimensions GetVideoDimensions();
 
   std::optional<int64_t> height_ = std::nullopt;
   std::optional<int64_t> width_ = std::nullopt;
