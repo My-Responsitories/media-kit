@@ -124,6 +124,10 @@ VideoOutput::VideoOutput(int64_t handle,
 
 VideoOutput::~VideoOutput() {
   destroyed_ = true;
+  if (render_context_) {
+    // Stop the producer before draining queued tasks that borrow this object.
+    mpv_render_context_set_update_callback(render_context_, nullptr, nullptr);
+  }
   auto promise = std::promise<void>();
   if (texture_id_) {
     registrar_->texture_registrar()->UnregisterTexture(
@@ -144,14 +148,13 @@ VideoOutput::~VideoOutput() {
             promise.set_value();
           });
         });
+    promise.get_future().wait();
   }
-
-  promise.get_future().wait();
   texture_id_ = 0;
 
   thread_pool_ref_->Post([render_context = render_context_]() {
-    mpv_render_context_free(render_context);
-  });
+    if (render_context) mpv_render_context_free(render_context);
+  }).wait();
 }
 
 void VideoOutput::NotifyRender() {
@@ -168,9 +171,9 @@ void VideoOutput::Render() {
     if (d3d11_renderer_ != nullptr) {
       uint64_t flags = mpv_render_context_update(render_context_);
       if (flags & MPV_RENDER_UPDATE_FRAME) {
-          mpv_render_context_render(render_context_, nullptr);
-          mpv_render_context_report_swap(render_context_);
-          d3d11_renderer_->ProducerCommit();
+        mpv_render_context_render(render_context_, nullptr);
+        mpv_render_context_report_swap(render_context_);
+        d3d11_renderer_->ProducerCommit();
       }
     }
     // S/W
@@ -201,7 +204,8 @@ void VideoOutput::Render() {
 void VideoOutput::SetTextureUpdateCallback(
     std::function<void(int64_t, int64_t, int64_t)> callback) {
   texture_update_callback_ = callback;
-  texture_update_callback_(texture_id_, GetVideoWidth(), GetVideoHeight());
+  auto [width, height] = GetVideoDimensions();
+  texture_update_callback_(texture_id_, width, height);
 }
 
 void VideoOutput::SetSize(std::optional<int64_t> width,
@@ -240,7 +244,7 @@ void VideoOutput::SetSize(std::optional<int64_t> width,
 
 void VideoOutput::CheckAndResize() {
   // Check if a new texture with different dimensions is needed.
-  auto required_width = GetVideoWidth(), required_height = GetVideoHeight();
+  auto [required_width, required_height] = GetVideoDimensions();
   if (required_width < 1 || required_height < 1) {
     // Invalid.
     return;
@@ -370,100 +374,55 @@ void VideoOutput::Resize(int64_t required_width, int64_t required_height) {
   }
 }
 
-int64_t VideoOutput::GetVideoWidth() {
-  // Fixed width.
-  if (width_) {
-    return width_.value();
+VideoDimensions VideoOutput::GetVideoDimensions() {
+  // Fixed dimensions.
+  if (width_ && height_) {
+    return {width_.value(), height_.value()};
   }
-  // Video resolution dependent width.
-  int64_t width = 0;
-  int64_t height = 0;
-
-  mpv_node params;
-  mpv_get_property(handle_, "video-out-params", MPV_FORMAT_NODE, &params);
 
   int64_t dw = 0, dh = 0, rotate = 0;
-  if (params.format == MPV_FORMAT_NODE_MAP) {
-    for (int32_t i = 0; i < params.u.list->num; i++) {
-      char* key = params.u.list->keys[i];
-      auto value = params.u.list->values[i];
-      if (value.format == MPV_FORMAT_INT64) {
-        if (strcmp(key, "dw") == 0) {
-          dw = value.u.int64;
-        }
-        if (strcmp(key, "dh") == 0) {
-          dh = value.u.int64;
-        }
-        if (strcmp(key, "rotate") == 0) {
-          rotate = value.u.int64;
+
+  mpv_node params;
+  if (mpv_get_property(handle_, "video-out-params", MPV_FORMAT_NODE, &params) >= 0) {
+    if (params.format == MPV_FORMAT_NODE_MAP) {
+      for (int32_t i = 0; i < params.u.list->num; i++) {
+        char* key = params.u.list->keys[i];
+        auto value = params.u.list->values[i];
+        if (value.format == MPV_FORMAT_INT64) {
+          if (strcmp(key, "dw") == 0) {
+            dw = value.u.int64;
+          } else if (strcmp(key, "dh") == 0) {
+            dh = value.u.int64;
+          } else if (strcmp(key, "rotate") == 0) {
+            rotate = value.u.int64;
+          }
         }
       }
     }
     mpv_free_node_contents(&params);
   }
 
-  width = rotate == 0 || rotate == 180 ? dw : dh;
-  height = rotate == 0 || rotate == 180 ? dh : dw;
+  int64_t natural_width = rotate == 0 || rotate == 180 ? dw : dh;
+  int64_t natural_height = rotate == 0 || rotate == 180 ? dh : dw;
 
-  if (pixel_buffer_ != nullptr) {
+  if (pixel_buffer_ != nullptr && natural_width > 0 && natural_height > 0) {
     // Make sure |width| & |height| fit between |SW_RENDERING_MAX_WIDTH| &
     // |SW_RENDERING_MAX_HEIGHT| while maintaining aspect-ratio.
-    if (width >= SW_RENDERING_MAX_WIDTH) {
-      return SW_RENDERING_MAX_WIDTH;
+    double scale = 1.0;
+    if (natural_width > SW_RENDERING_MAX_WIDTH) {
+      scale = std::min(scale, static_cast<double>(SW_RENDERING_MAX_WIDTH) / natural_width);
     }
-    if (height >= SW_RENDERING_MAX_HEIGHT) {
-      return width / height * SW_RENDERING_MAX_HEIGHT;
+    if (natural_height > SW_RENDERING_MAX_HEIGHT) {
+      scale = std::min(scale, static_cast<double>(SW_RENDERING_MAX_HEIGHT) / natural_height);
     }
-  }
-
-  return width;
-}
-
-int64_t VideoOutput::GetVideoHeight() {
-  // Fixed height.
-  if (height_) {
-    return height_.value();
-  }
-  // Video resolution dependent height.
-  int64_t width = 0;
-  int64_t height = 0;
-
-  mpv_node params;
-  mpv_get_property(handle_, "video-out-params", MPV_FORMAT_NODE, &params);
-
-  int64_t dw = 0, dh = 0, rotate = 0;
-  if (params.format == MPV_FORMAT_NODE_MAP) {
-    for (int32_t i = 0; i < params.u.list->num; i++) {
-      char* key = params.u.list->keys[i];
-      auto value = params.u.list->values[i];
-      if (value.format == MPV_FORMAT_INT64) {
-        if (strcmp(key, "dw") == 0) {
-          dw = value.u.int64;
-        }
-        if (strcmp(key, "dh") == 0) {
-          dh = value.u.int64;
-        }
-        if (strcmp(key, "rotate") == 0) {
-          rotate = value.u.int64;
-        }
-      }
-    }
-    mpv_free_node_contents(&params);
-  }
-
-  width = rotate == 0 || rotate == 180 ? dw : dh;
-  height = rotate == 0 || rotate == 180 ? dh : dw;
-
-  if (pixel_buffer_ != NULL) {
-    // Make sure |width| & |height| fit between |SW_RENDERING_MAX_WIDTH| &
-    // |SW_RENDERING_MAX_HEIGHT| while maintaining aspect-ratio.
-    if (height >= SW_RENDERING_MAX_HEIGHT) {
-      return SW_RENDERING_MAX_HEIGHT;
-    }
-    if (width >= SW_RENDERING_MAX_WIDTH) {
-      return height / width * SW_RENDERING_MAX_WIDTH;
+    if (scale < 1.0) {
+      natural_width = std::max<int64_t>(1, static_cast<int64_t>(natural_width * scale));
+      natural_height = std::max<int64_t>(1, static_cast<int64_t>(natural_height * scale));
     }
   }
 
-  return height;
+  VideoDimensions result;
+  result.width = width_.value_or(natural_width);
+  result.height = height_.value_or(natural_height);
+  return result;
 }
