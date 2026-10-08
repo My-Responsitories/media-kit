@@ -51,6 +51,7 @@ ffigen:
   headers:
     entry-points:
       - headers/client.h
+      - headers/stream_cb.h
   type-map:
     native-types:
       char:

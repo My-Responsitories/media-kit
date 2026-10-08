@@ -1463,6 +1463,77 @@ class MPV {
         )
       >();
 
+  /// Add a custom stream protocol. This will register a protocol handler under
+  /// the given protocol prefix, and invoke the given callbacks if an URI with the
+  /// matching protocol prefix is opened.
+  ///
+  /// The "ro" is for read-only - only read-only streams can be registered with
+  /// this function.
+  ///
+  /// The callback remains registered until the mpv core is registered.
+  ///
+  /// If a custom stream with the same name is already registered, then the
+  /// MPV_ERROR_INVALID_PARAMETER error is returned.
+  ///
+  /// @param protocol protocol prefix, for example "foo" for "foo://" URIs
+  /// @param user_data opaque pointer passed into the mpv_stream_cb_open_fn
+  /// callback.
+  /// @return error code
+  int mpv_stream_cb_add_ro(
+    ffi.Pointer<mpv_handle> ctx,
+    ffi.Pointer<ffi.Uint8> protocol,
+    ffi.Pointer<ffi.Void> user_data,
+    ffi.Pointer<
+      ffi.NativeFunction<
+        ffi.Int Function(
+          ffi.Pointer<ffi.Void> user_data,
+          ffi.Pointer<ffi.Uint8> uri,
+          ffi.Pointer<mpv_stream_cb_info> info,
+        )
+      >
+    >
+    open_fn,
+  ) {
+    return _mpv_stream_cb_add_ro(ctx, protocol, user_data, open_fn);
+  }
+
+  late final _mpv_stream_cb_add_roPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<mpv_handle>,
+            ffi.Pointer<ffi.Uint8>,
+            ffi.Pointer<ffi.Void>,
+            ffi.Pointer<
+              ffi.NativeFunction<
+                ffi.Int Function(
+                  ffi.Pointer<ffi.Void> user_data,
+                  ffi.Pointer<ffi.Uint8> uri,
+                  ffi.Pointer<mpv_stream_cb_info> info,
+                )
+              >
+            >,
+          )
+        >
+      >('mpv_stream_cb_add_ro');
+  late final _mpv_stream_cb_add_ro = _mpv_stream_cb_add_roPtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<mpv_handle>,
+          ffi.Pointer<ffi.Uint8>,
+          ffi.Pointer<ffi.Void>,
+          ffi.Pointer<
+            ffi.NativeFunction<
+              ffi.Int Function(
+                ffi.Pointer<ffi.Void> user_data,
+                ffi.Pointer<ffi.Uint8> uri,
+                ffi.Pointer<mpv_stream_cb_info> info,
+              )
+            >
+          >,
+        )
+      >();
+
   /// Similar to mpv_destroy(), but brings the player and all clients down
   /// as well, and waits until all of them are destroyed. This function blocks. The
   /// advantage over mpv_destroy() is that while mpv_destroy() merely
@@ -2330,4 +2401,51 @@ final class mpv_node_list extends ffi.Struct {
     ..ref.num = num
     ..ref.values = values
     ..ref.keys = keys;
+}
+
+/// See mpv_stream_cb_open_ro_fn callback.
+final class mpv_stream_cb_info extends ffi.Struct {
+  /// Opaque user-provided value, which will be passed to the other callbacks.
+  /// The close callback will be called to release the cookie. It is not
+  /// interpreted by mpv. It doesn't even need to be a valid pointer.
+  ///
+  /// The user sets this in the mpv_stream_cb_open_ro_fn callback.
+  external ffi.Pointer<ffi.Void> cookie;
+
+  /// Callbacks set by the user in the mpv_stream_cb_open_ro_fn callback. Some
+  /// of them are optional, and can be left unset.
+  ///
+  /// The following callbacks are mandatory: read_fn, close_fn
+  external ffi.Pointer<
+    ffi.NativeFunction<
+      ffi.Int64 Function(
+        ffi.Pointer<ffi.Void> cookie,
+        ffi.Pointer<ffi.Uint8> buf,
+        ffi.Uint64 nbytes,
+      )
+    >
+  >
+  read_fn;
+
+  external ffi.Pointer<
+    ffi.NativeFunction<
+      ffi.Int64 Function(ffi.Pointer<ffi.Void> cookie, ffi.Int64 offset)
+    >
+  >
+  seek_fn;
+
+  external ffi.Pointer<
+    ffi.NativeFunction<ffi.Int64 Function(ffi.Pointer<ffi.Void> cookie)>
+  >
+  size_fn;
+
+  external ffi.Pointer<
+    ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void> cookie)>
+  >
+  close_fn;
+
+  external ffi.Pointer<
+    ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void> cookie)>
+  >
+  cancel_fn;
 }

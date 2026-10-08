@@ -37,6 +37,17 @@ void nativeEnsureInitialized({String? libmpv}) {
   NativeLibrary.ensureInitialized(libmpv: libmpv);
 }
 
+/// Signature of the read-only stream callback passed to
+/// [NativePlayer.registerStreamProtocol]. See that method for the full
+/// contract.
+@experimental
+typedef MpvStreamCallbackOpenFn =
+    int Function(
+      Pointer<Void> userData,
+      Pointer<Uint8> uri,
+      Pointer<generated.mpv_stream_cb_info> info,
+    );
+
 /// {@template native_player}
 ///
 /// NativePlayer
@@ -927,6 +938,48 @@ class NativePlayer extends PlatformPlayer {
   int get handle {
     assert(ctx != nullptr);
     return ctx.address;
+  }
+
+  /// Registers a read-only custom stream protocol backed by native callbacks,
+  /// so URIs of the form `myproto://…` can be opened with [open].
+  ///
+  /// [scheme] must be the bare protocol prefix without `://` (`myproto`, not
+  /// `myproto://`), and the call must happen before [open].
+  ///
+  /// [openFn] must be real native code — it is invoked from libmpv's own
+  /// threads, which are not attached to any Dart isolate — and it and
+  /// [userData] must stay alive until this [Player] is disposed.
+  ///
+  /// Dart native callables cannot be used here: [NativeCallable.isolateLocal]
+  /// aborts when invoked from another thread, and [NativeCallable.listener]
+  /// cannot return a value.
+  ///
+  /// Throws [Exception] if [scheme] is already registered, and [AssertionError]
+  /// if this [Player] has already been disposed.
+  @experimental
+  void registerStreamProtocol(
+    String scheme,
+    Pointer<NativeFunction<MpvStreamCallbackOpenFn>> openFn, {
+    Pointer<Void>? userData,
+  }) {
+    throwIfDisposed();
+
+    final protocol = scheme.toNativeUtf8();
+    final result = mpv.mpv_stream_cb_add_ro(
+      ctx,
+      protocol,
+      userData ?? nullptr,
+      // The package-level typedef does not unify with the generated inline
+      // function type here, so cast the native function pointer explicitly.
+      openFn.cast(),
+    );
+    calloc.free(protocol);
+    if (result < 0) {
+      final reason = mpv.mpv_error_string(result).toDartString();
+      throw Exception(
+        '[Player.registerStreamProtocol] mpv_stream_cb_add_ro("$scheme") failed: $result ($reason)',
+      );
+    }
   }
 
   /// Sets property for the internal libmpv instance of this [Player].
